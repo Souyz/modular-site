@@ -97,9 +97,12 @@ export function buildV4StageTwoScene(context) {
   const stage = context.stage;
   const b = createV4SceneBuilder(context);
   const {
+    fmt,
     vector,
+    packed,
     nodes,
     addInstance,
+    addPlainNode,
     addContract,
     addTerrain,
     addTerrainPolygon,
@@ -113,6 +116,19 @@ export function buildV4StageTwoScene(context) {
     addDirector,
     finalize
   } = b;
+
+  function addAnchoredLandmark(name, surfaceId, t, offset, points, color) {
+    const anchor = surfacePoint(surfaceId, t);
+    addPlainNode(name, "Polygon2D", "Items/Decoration", {
+      position: vector(anchor.x, anchor.y + offset),
+      polygon: packed(points),
+      color,
+      z_index: "0",
+      "metadata/_llr_anchor_surface": JSON.stringify(surfaceId),
+      "metadata/_llr_anchor_t": fmt(t),
+      "metadata/_llr_anchor_offset": fmt(offset)
+    });
+  }
 
   function addBedChain(prefix, startX, endX, y) {
     const ids = [];
@@ -135,7 +151,7 @@ export function buildV4StageTwoScene(context) {
   addTerrainPolygon("B1HarborDownStairs", 1240, 260, downStairs(5), 500);
   addBedChain("B1HarborBed", 1640, 2180, 510);
   addTerrainPolygon("B1HarborUpStairs", 2000, 250, upStairs(5), 500);
-  const b1exit = addTerrain("B1HarborExit", 2240, 250, 260, [0, -4, 0]);
+  const b1exit = addTerrain("B1HarborExit", 2240, 250, 160, [0, -4, 0]);
   addWater("B1HarborWater", 1240, 300, 1160, 420);
   addShuttle("B1FastFerry", 1370, 205, { x: 650, y: 0 }, {
     travelSeconds: 2.4, pauseSeconds: 0.35, phase: 0.1, walkableWidth: 176
@@ -143,6 +159,14 @@ export function buildV4StageTwoScene(context) {
   grounded("B1HarborSign", "Items/Decoration", "sign", b1dock, 0.46, -3, {
     lines: `Array[String](["水不是失败区：等船更快，直接游也一定能到。"] )`
   });
+  addAnchoredLandmark(
+    "B1HarborMast",
+    b1dock,
+    0.82,
+    0,
+    [[-5, 0], [5, 0], [5, -72], [48, -92], [5, -112], [-5, -112]],
+    "Color(0.18, 0.42, 0.68, 0.92)"
+  );
   recordRoute(stage.beats[0], "main", [
     { x: 100, y: 235 }, { x: 820, y: 258 }, { x: 1280, y: 300 },
     { x: 1500, y: 410 }, { x: 1950, y: 430 }, { x: 2180, y: 300 }, { x: 2380, y: 248 }
@@ -156,7 +180,7 @@ export function buildV4StageTwoScene(context) {
   addTerrainPolygon("B2DiveDownStairs", 2920, 250, downStairs(6), 540);
   const b2beds = addBedChain("B2DiveBed", 3400, 4740, 550);
   addTerrainPolygon("B2DiveUpStairs", 4560, 250, upStairs(6), 540);
-  const b2exit = addTerrain("B2DiveExit", 5040, 250, 240, [0, 0]);
+  const b2exit = addTerrain("B2DiveExit", 5040, 250, 160, [0, 0]);
   addWater("B2DiveWater", 2920, 300, 2200, 450);
   addShuttle("B2WaterLift", 4500, 520, { x: 0, y: -260 }, {
     travelSeconds: 2.6, pauseSeconds: 0.45, phase: 0.45, walkableWidth: 176
@@ -164,6 +188,10 @@ export function buildV4StageTwoScene(context) {
   addWood("B2LiftBottomWait", 4320, 520, 6);
   addWood("B2LiftTopWait", 4700, 270, 6);
   airborne("B2Bottle", "Items/Pickups", "bottle", 3940, 500);
+  grounded("B2DiveArrow", "Items/Decoration", "arrow", b2entry, 0.82, -58, {
+    rotation: "1.5708"
+  });
+  grounded("B2LiftLandingFlowers", "Items/Decoration", "flowers", b2exit, 0.35, -10);
   addContract("B2SafeDiveContract", {
     continuous_seabed: true,
     water_is_failure: false,
@@ -187,7 +215,7 @@ export function buildV4StageTwoScene(context) {
   addTerrain("B3SwimIslandA", 6240, 430, 480, [0, -6, 4, 0]);
   addTerrain("B3SwimIslandB", 7050, 410, 460, [0, 8, -4, 0]);
   addTerrainPolygon("B3FerryUpStairs", 7920, 240, upStairs(5), 500);
-  const b3exit = addTerrain("B3FerryExit", 8320, 240, 260, [0, 0]);
+  const b3exit = addTerrain("B3FerryExit", 8320, 240, 180, [0, 0]);
   addWater("B3FerryWater", 5640, 300, 2760, 430);
   addShuttle("B3FerryA", 5790, 205, { x: 820, y: -20 }, {
     travelSeconds: 2.8, pauseSeconds: 0.35, phase: 0.05, walkableWidth: 176
@@ -195,8 +223,21 @@ export function buildV4StageTwoScene(context) {
   addShuttle("B3FerryB", 6880, 190, { x: 850, y: 25 }, {
     travelSeconds: 3.0, pauseSeconds: 0.35, phase: 0.52, walkableWidth: 176
   });
-  airborne("B3CheepA", "Items/Enemies", "cheep", 6600, 455, { "metadata/_llr_waterborne": "true" });
-  airborne("B3CheepB", "Items/Enemies", "cheep", 7550, 470, { "metadata/_llr_waterborne": "true" });
+  // Two static piers make the fast route's transfer and dismount explicit.
+  // Missing either one still drops the player into the uninterrupted swim path.
+  addWood("B3FerryTransferPier", 6745, 235, 6);
+  addWood("B3FerryExitPier", 7865, 250, 6);
+  airborne("B3FerryBlueCoin", "Items/Pickups", "blueCoin", 6745, 170);
+  // Keep swimmers in the open channels instead of embedding a Cheep in the
+  // first rest island's collision body.
+  airborne("B3CheepA", "Items/Enemies", "cheep", 6880, 470, { "metadata/_llr_waterborne": "true" });
+  airborne("B3CheepB", "Items/Enemies", "cheep", 7700, 470, { "metadata/_llr_waterborne": "true" });
+  addContract("B3FerryBufferContract", {
+    static_transfer_piers: 2,
+    min_landing_width: 176,
+    missed_ferry_drops_to_water: true,
+    void_required: false
+  });
   recordRoute(stage.beats[2], "main", [
     { x: 5220, y: 248 }, { x: 5640, y: 300 }, { x: 6100, y: 440 },
     { x: 6500, y: 430 }, { x: 7200, y: 430 }, { x: 7850, y: 440 },
@@ -208,12 +249,18 @@ export function buildV4StageTwoScene(context) {
   ], { coinLimit: 5 });
 
   // Beat 4: the pound gate guarantees the tide event only fires after the player opens it.
-  const b4gate = addTerrain("B4TideGatePlaza", 8500, 240, 820, [0, -8, 8, 0]);
+  const b4gate = addTerrain("B4TideGatePlaza", 8500, 240, 750, [0, -8, 8, 0]);
   const b4control = addTerrain("B4TideControl", 9250, 240, 900, [0, 6, -6, 0]);
+  grounded("B4GateSign", "Items/Decoration", "sign", b4gate, 0.16, -3, {
+    lines: `Array[String](["[@n,船闸控制]在宽广场砸地开闸；看到右岸箭头后再跟随上涨的水线。"] )`
+  });
   grounded("B4TidePoundGate", "Items/Mechanisms", "poundGate", b4gate, 0.62, -8, {
     gate_offset: vector(220, -92),
     gate_height: "184",
     open_distance: "224"
+  });
+  grounded("B4GateExitArrow", "Items/Decoration", "arrow", b4control, 0.2, -60, {
+    rotation: "0"
   });
   addDirector("B4RaiseTideDirector", 9750, 180, {
     announcement: "船闸开启，潮水正在上涨",
@@ -238,12 +285,14 @@ export function buildV4StageTwoScene(context) {
   ]);
 
   // Beat 5: moving the Water root raises both rendering and collision together.
-  const b5start = addTerrain("B5TideStart", 10400, 300, 620, [0, 8, -4, 0]);
+  // This shore begins at the control plaza's edge, removing the former 250px
+  // blind jump between the gate event and the rising-tide route.
+  const b5start = addTerrain("B5TideStart", 10150, 300, 870, [0, 8, -4, 0]);
   addBedChain("B5TideBed", 10400, 14200, 610);
   const b5dockA = addTerrain("B5HalfFloodedDockA", 11100, 350, 560, [0, -8, 6, 0]);
   const b5dockB = addTerrain("B5HalfFloodedDockB", 12020, 310, 620, [0, 8, -6, 0]);
   const b5dockC = addTerrain("B5HalfFloodedDockC", 13020, 390, 560, [0, -6, 6, 0]);
-  const b5exit = addTerrain("B5TideExit", 13800, 280, 440, [0, 6, 0]);
+  const b5exit = addTerrain("B5TideExit", 13800, 280, 400, [0, 6, 0]);
   addWater("B5TideWater", 10380, 520, 3860, 430);
   addShuttle("B5HighFerryA", 10880, 210, { x: 740, y: 20 }, {
     travelSeconds: 2.7, pauseSeconds: 0.35, phase: 0.2, walkableWidth: 176
@@ -253,6 +302,12 @@ export function buildV4StageTwoScene(context) {
   });
   airborne("B5BottleA", "Items/Pickups", "bottle", 11600, 320);
   airborne("B5BottleB", "Items/Pickups", "bottle", 13300, 350);
+  // Keep the swimmer visibly below the raised tide surface (y=520) and above
+  // the solid seabed, so both runtime placement and the water-volume audit agree.
+  airborne("B5TideCheep", "Items/Enemies", "cheep", 12800, 560, {
+    "metadata/_llr_waterborne": "true"
+  });
+  grounded("B5TideDockFlowers", "Items/Decoration", "flowers", b5dockC, 0.82, -10);
   recordRoute(stage.beats[4], "main", [
     { x: 10420, y: 298 }, { x: 11000, y: 320 }, { x: 11500, y: 390 },
     { x: 12100, y: 350 }, { x: 12700, y: 390 }, { x: 13300, y: 430 },
@@ -264,22 +319,25 @@ export function buildV4StageTwoScene(context) {
   ], { coinLimit: 5 });
 
   // Beat 6: one route has two chunks because the pipe intentionally folds space backward.
-  const b6upperA = addTerrain("B6UpperBridgeA", 14200, 280, 850, [0, -8, 6, 0]);
-  const b6upperB = addTerrain("B6UpperBridgeB", 15020, 260, 850, [0, 6, -6, 0]);
-  const b6upperC = addTerrain("B6UpperBridgeC", 15840, 270, 850, [0, -6, 6, 0]);
+  const b6upperA = addTerrain("B6UpperBridgeA", 14200, 280, 820, [0, -8, 6, 0]);
+  const b6upperB = addTerrain("B6UpperBridgeB", 15020, 260, 820, [0, 6, -6, 0]);
+  const b6upperC = addTerrain("B6UpperBridgeC", 15840, 270, 820, [0, -6, 6, 0]);
   const b6pipeDock = addTerrain("B6PipeDock", 16660, 260, 420, [0, 0]);
-  addBedChain("B6BridgeBed", 14200, 17700, 620);
+  const b6beds = addBedChain("B6BridgeBed", 14200, 17700, 620);
   addWater("B6BridgeUnderwater", 14200, 390, 3500, 430);
   const pipeAnchor = surfacePoint(b6pipeDock, 0.58);
   addInstance("B6FoldbackPipe", "Items/Mechanisms", "pipe", {
     position: vector(pipeAnchor.x, pipeAnchor.y - 16),
     target_pos: vector(14480, 520)
   });
-  airborne("B6PipeArrow", "Items/Decoration", "arrow", pipeAnchor.x + 28, pipeAnchor.y - 72, {
+  grounded("B6PipeArrow", "Items/Decoration", "arrow", b6pipeDock, 0.65, -72, {
     rotation: "1.5708"
   });
+  grounded("B6ReturnArrow", "Items/Decoration", "arrow", b6beds[0], 0.38, -62, {
+    rotation: "0"
+  });
   addTerrainPolygon("B6ReturnStairBank", 17100, 360, upStairs(5, 80, 52, 100), 540);
-  const b6exit = addTerrain("B6LoopExit", 17580, 360, 220, [0, 0]);
+  const b6exit = addTerrain("B6LoopExit", 17520, 360, 180, [0, 0]);
   addContract("B6PipeLoopContract", {
     pipe_foldback: true,
     target_x: 14480,
@@ -305,11 +363,13 @@ export function buildV4StageTwoScene(context) {
   addWater("B7DrainWaterB", 19400, 360, 950, 370);
   const b7islandB = addTerrain("B7DrainIslandB", 20250, 400, 520, [0, 6, -4, 0]);
   addWater("B7DrainWaterC", 20700, 420, 950, 310);
-  const b7exit = addTerrain("B7DrainExit", 21550, 450, 500, [0, -8, 0]);
+  const b7exit = addTerrain("B7DrainExit", 21550, 450, 450, [0, -8, 0]);
   addShuttle("B7DrainLift", 21720, 430, { x: 0, y: -150 }, {
     travelSeconds: 2.2, pauseSeconds: 0.4, phase: 0.35, walkableWidth: 176
   });
-  addDirector("B7DrainCheckpoint", 18800, 285, {
+  // Preview the stepped waterline from dry ground and save before the first
+  // pool, rather than announcing the rule after the player is already in it.
+  addDirector("B7DrainCheckpoint", 17920, 285, {
     announcement: "灯塔排水廊：水面会逐格降低",
     checkpoint: true,
     width: 260,
@@ -349,7 +409,20 @@ export function buildV4StageTwoScene(context) {
     width: 300,
     height: 260
   });
-  grounded("B8LighthouseTree", "Items/Decoration", "smallTree", b8finish, 0.72, -38);
+  addAnchoredLandmark(
+    "B8LighthouseLandmark",
+    b8finish,
+    0.68,
+    0,
+    [
+      [-42, 0], [42, 0], [30, -210], [55, -210], [55, -230],
+      [28, -230], [24, -276], [-24, -276], [-28, -230],
+      [-55, -230], [-55, -210], [-30, -210]
+    ],
+    "Color(0.96, 0.9, 0.66, 0.9)"
+  );
+  grounded("B8LighthouseFlowers", "Items/Decoration", "flowers", b8finish, 0.46, -10);
+  grounded("B8LighthouseTree", "Items/Decoration", "smallTree", b8finish, 0.9, -38);
   addContract("B8SafeLighthouseContract", {
     lift_travel: 360,
     min_landing_width: 160,

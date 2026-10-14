@@ -199,6 +199,43 @@ export function buildV4StageFourScene(context) {
     }
   }
 
+  function addGuideRibbon(name, points, color, width = 8) {
+    addPlainNode(name, "Line2D", "Items/Decoration", {
+      z_index: "-3",
+      points: packed(points),
+      width: String(width),
+      default_color: color,
+      antialiased: "true",
+      "metadata/_llr_functional_wayfinding": "true"
+    });
+  }
+
+  function addRouteBadge(name, x, y, label, color, metadata = {}) {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x, y),
+      polygon: packed([[-58, -22], [58, -22], [66, 0], [58, 22], [-58, 22], [-66, 0]]),
+      color,
+      ...metadata
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x - 48, y - 17),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.08, 0.1, 0.18, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.9)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "18"
+    });
+  }
+
+  function addShaftMarker(name, x, y, index, color) {
+    addRouteBadge(name, x, y, `${index} 号火箭井`, color, {
+      "metadata/_llr_shaft_index": String(index),
+      "metadata/_llr_landmark": "true"
+    });
+  }
+
   function addShaftContract(name, index, verticalSpan, landingCount) {
     addContract(name, {
       real_rocket_shaft: true,
@@ -276,6 +313,11 @@ export function buildV4StageFourScene(context) {
   airborne("B3MiddleBottle", "Items/Pickups", "bottle", b3middle.x, b3middle.y - 34);
   addReleaseRing("B2ReleaseRing", 1850, 190);
   addReleaseRing("B3ReleaseRing", 1850, -150);
+  addShaftMarker("ShaftOneMarker", 1300, -640, 1, "Color(0.4, 0.86, 1, 0.94)");
+  addRouteBadge("ShaftOneRefillBadge", 1510, 560, "补水 · 重试", "Color(0.38, 0.9, 0.78, 0.94)");
+  addGuideRibbon("ShaftOneFlightRibbon", [
+    [1510, 585], [1850, 310], [1850, -30], [2050, -370], [2360, -370]
+  ], "Color(0.34, 0.82, 1, 0.7)");
   addShaftContract("ShaftOneContract", 1, LAYER_HEIGHT * 3, 3);
   recordRoute(stage.beats[1], "main", [
     { x: 1500, y: 645 }, { x: 1700, y: 640 }, { x: 1850, y: 310 }
@@ -296,6 +338,10 @@ export function buildV4StageFourScene(context) {
   airborne("B4GreenhouseBottleA", "Items/Pickups", "bottle", 3200, -410);
   airborne("B4GreenhouseBottleB", "Items/Pickups", "bottle", 3700, -410);
   grounded("B4GreenhouseFlowers", "Items/Decoration", "flowers", "B4GreenhouseFloor1", 0.72, -10);
+  addGuideRibbon("B4GreenhouseCanopy", [
+    [2540, -420], [2780, -505], [3260, -545], [3740, -505], [4140, -420]
+  ], "Color(0.3, 0.76, 0.5, 0.78)", 12);
+  addRouteBadge("B4GreenhouseBadge", 3420, -500, "温室补给站", "Color(0.55, 0.92, 0.62, 0.94)");
   addRocketDirector("B4GreenhouseCheckpoint", 3500, -440, {
     announcement: "温室补给完成：前方宽台向下通往第二井",
     checkpoint: true,
@@ -336,6 +382,11 @@ export function buildV4StageFourScene(context) {
     launch_speed: "10.8"
   });
   airborne("B5ShuttleBottle", "Items/Pickups", "bottle", b5launch.x, b5launch.y - 34);
+  addShaftMarker("ShaftTwoMarker", 5000, -640, 2, "Color(1, 0.68, 0.3, 0.95)");
+  addRouteBadge("ShaftTwoRefillBadge", 5230, 560, "落水补给", "Color(0.38, 0.9, 0.78, 0.94)");
+  addGuideRibbon("B5ShuttleRouteRibbon", [
+    [5150, 580], [5350, 310], [5950, 310], [6200, 310]
+  ], "Color(1, 0.62, 0.22, 0.74)");
   addContract("B5ShuttleRecoveryContract", {
     shuttle_walkable_width: b5shuttle.walkableWidth,
     shuttle_miss_to_refill_pool: true,
@@ -367,6 +418,22 @@ export function buildV4StageFourScene(context) {
     color: "Color(0.78, 0.5, 0.94, 0.82)",
     "metadata/_llr_moving_decoration": "true",
     "metadata/_llr_collision_enabled": "false"
+  });
+  addPlainNode("B6FakeTopStripe", "Line2D", "Items/Decoration/B6FakeTopFacade", {
+    z_index: "4",
+    points: packed([[64, 32], [1152, 32]]),
+    width: "10",
+    default_color: "Color(1, 0.86, 0.24, 0.96)",
+    antialiased: "true"
+  });
+  addPlainNode("B6FakeTopLabel", "Label", "Items/Decoration/B6FakeTopFacade", {
+    z_index: "5",
+    position: vector(520, 5),
+    text: JSON.stringify("假顶  ↓  从右侧下降"),
+    "theme_override_colors/font_color": "Color(0.18, 0.08, 0.26, 1)",
+    "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.92)",
+    "theme_override_constants/outline_size": "4",
+    "theme_override_font_sizes/font_size": "20"
   });
   addRocketDirector("B6FalseTopDirector", 6200, -420, {
     announcement: "这里是假顶：停止喷射，沿右侧硬币下降",
@@ -424,6 +491,15 @@ export function buildV4StageFourScene(context) {
     width: 300,
     height: 220
   });
+  addShaftMarker("ShaftThreeMarker", 8250, -430, 3, "Color(0.78, 0.58, 1, 0.95)");
+  addRouteBadge("B7StableRouteBadge", 8520, 560, "稳线 · 两短喷", "Color(0.4, 0.86, 1, 0.95)");
+  addRouteBadge("B7FastRouteBadge", 9210, 560, "捷径 · 一长喷", "Color(1, 0.72, 0.3, 0.95)");
+  addGuideRibbon("B7StableRouteRibbon", [
+    [8400, 590], [8600, 310], [8600, -30], [8900, -30]
+  ], "Color(0.34, 0.82, 1, 0.72)");
+  addGuideRibbon("B7FastRouteRibbon", [
+    [9000, 590], [9200, 360], [9200, -30], [8900, -30]
+  ], "Color(1, 0.68, 0.2, 0.72)");
   addContract("B7FuelChoiceContract", {
     main_short_launch_count: 2,
     main_bottle_count: 1,

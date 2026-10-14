@@ -10,6 +10,7 @@ const adminCommentIpKeyPrefix = "cloudflare-modular-site.admin-comment-ip.";
 const pageAccessKeyPrefix = "cloudflare-modular-site.page-access.";
 const maxUndoSteps = 50;
 const moduleClickMoveThreshold = 10;
+const externalLinkIconTextMaxLength = 8;
 const moduleInteractionIgnoreSelector = "a, button, input, textarea, select, option, video, audio, details, summary, [contenteditable], [role=\"button\"], [role=\"link\"]";
 const cubeCityLinkId = "builtin-cubecity";
 const cubeCityPath = "/llrgamecubecity";
@@ -143,8 +144,8 @@ class ApiError extends Error {
 }
 
 const api = {
-  getJson: async (path, useAuth = false, cache = "no-store") => {
-    const response = await fetch(path, requestOptions("GET", undefined, useAuth, cache));
+  getJson: async (path, useAuth = false, cache = "no-store", credentials = "same-origin") => {
+    const response = await fetch(path, requestOptions("GET", undefined, useAuth, cache, credentials));
 
     if (!response.ok) {
       throw new Error(`Request failed: ${response.status}`);
@@ -282,7 +283,7 @@ function applyPreparedDailyBackground(page) {
   applyPageBackground(workspace, resolvePageBackground(page));
 }
 
-function requestOptions(method, body, useAuth, cache = "no-store") {
+function requestOptions(method, body, useAuth, cache = "no-store", credentials = "same-origin") {
   const headers = new Headers();
 
   if (body) {
@@ -297,6 +298,7 @@ function requestOptions(method, body, useAuth, cache = "no-store") {
     method,
     headers,
     cache,
+    credentials,
     body: body ? JSON.stringify(body) : undefined
   };
 }
@@ -305,7 +307,7 @@ async function loadPublicConfig() {
   try {
     const route = getRouteSlug();
     const query = route ? `?route=${encodeURIComponent(route)}` : "";
-    const payload = await api.getJson(`/api/site-config${query}`, false, "no-cache");
+    const payload = await api.getJson(`/api/site-config${query}`, false, "no-cache", "same-origin");
 
     return payload.config || fallbackConfig;
   } catch {
@@ -1598,8 +1600,11 @@ function renderExternalLinkEditor(link) {
   const iconRow = element("div", "admin-row");
   iconRow.append(
     field("图标文字", link.iconText, (value) => {
-      link.iconText = value.slice(0, 4).toUpperCase();
-    }, "未上传图标时，会先尝试使用目标网站图标；读取失败时显示这段文字。")
+      link.iconText = normalizeExternalLinkIconTextInput(value);
+    }, `最多 ${externalLinkIconTextMaxLength} 个字符；未上传图标时，会先尝试使用目标网站图标，读取失败时显示这段文字。`, {
+      maxLength: externalLinkIconTextMaxLength,
+      normalize: normalizeExternalLinkIconTextInput
+    })
   );
   iconRow.append(imageValueField("自定义图标", link.iconImage, (value) => {
     link.iconImage = value;
@@ -2727,7 +2732,9 @@ async function saveAdminConfig() {
     state.saveStatus = payload.noChanges
       ? "没有需要保存的修改。"
       : `已保存 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
-    setSaveBarStatus(state.saveStatus, false);
+    // persistConfig hydrates the saved config into new objects. Re-render so
+    // every editor callback points at the current state instead of stale data.
+    renderAdminEditor();
   } catch (error) {
     state.saveStatus = error.code === "CONFIG_VERSION_CONFLICT"
       ? "配置已在其他页面更新，请重新加载后台后再保存。"
@@ -2820,6 +2827,7 @@ function rememberConfigChange() {
   }
 
   state.saveStatus = "有未保存修改。";
+  setSaveBarStatus(state.saveStatus);
 }
 
 function undoAdminChange() {
@@ -2973,7 +2981,7 @@ function renderHome(pages, links) {
   main.append(
     renderVisitorStatusStrip()
   );
-  loadVisitorSummary();
+  scheduleVisitorSummary();
 
   const grid = element("section", `module-grid home-entry-grid layout-${state.homeEntryLayout}`);
   for (const item of publicNavItems(pages, links)) {
@@ -3895,6 +3903,17 @@ async function loadVisitorSummary() {
       recentVisits: "获取失败"
     };
   }
+}
+
+function scheduleVisitorSummary() {
+  const run = () => loadVisitorSummary();
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 1200 });
+    return;
+  }
+
+  window.setTimeout(run, 240);
 }
 
 function renderPageEntry(page) {
@@ -5809,10 +5828,24 @@ function hydrateExternalLink(link) {
     description: link?.description || "",
     targetUrl: link?.targetUrl || link?.url || "",
     visible: link?.visible !== false,
-    iconText: (link?.iconText || "WEB").slice(0, 4).toUpperCase(),
+    iconText: normalizeExternalLinkIconText(link?.iconText || "WEB"),
     iconImage: link?.iconImage || "",
     backgroundImage: link?.backgroundImage || ""
   };
+}
+
+function normalizeExternalLinkIconText(value) {
+  return Array.from(String(value || "WEB"))
+    .slice(0, externalLinkIconTextMaxLength)
+    .join("")
+    .toUpperCase();
+}
+
+function normalizeExternalLinkIconTextInput(value) {
+  return Array.from(String(value || ""))
+    .slice(0, externalLinkIconTextMaxLength)
+    .join("")
+    .toUpperCase();
 }
 
 function ensureAdminSelection() {
@@ -6467,15 +6500,24 @@ function formatDateTime(value) {
   });
 }
 
-function field(label, value, onInput, hint = "") {
+function field(label, value, onInput, hint = "", options = {}) {
   const wrapper = element("label", "field");
   wrapper.append(element("span", "", label));
   const input = document.createElement("input");
   input.className = "input";
   input.value = value || "";
+  if (Number.isInteger(options.maxLength) && options.maxLength > 0) {
+    input.maxLength = options.maxLength;
+  }
   trackUndoOnEdit(input);
   input.addEventListener("input", () => {
-    onInput(input.value);
+    const nextValue = typeof options.normalize === "function"
+      ? options.normalize(input.value)
+      : input.value;
+    if (nextValue !== input.value) {
+      input.value = nextValue;
+    }
+    onInput(nextValue);
   });
   wrapper.append(input);
 
@@ -6663,7 +6705,7 @@ function compactImageValueField(label, value, onChange, options = {}) {
     uploadButton.disabled = true;
 
     try {
-      const dataUrl = await imageFileToDataUrl(file);
+      const dataUrl = await imageFileToDataUrl(file, imageProfileForLabel(label));
       paste.value = "";
       applyValue(dataUrl, "图片已加入预览，记得保存配置。");
     } catch (error) {
@@ -6723,7 +6765,7 @@ function imageValueField(label, value, onChange) {
     upload.disabled = true;
 
     try {
-      const dataUrl = await imageFileToDataUrl(file);
+      const dataUrl = await imageFileToDataUrl(file, imageProfileForLabel(label));
       input.value = dataUrl;
       onChange(dataUrl);
       state.saveStatus = "图片已加入预览，记得保存配置。";
@@ -6741,7 +6783,23 @@ function imageValueField(label, value, onChange) {
   return wrapper;
 }
 
-async function imageFileToDataUrl(file) {
+function imageProfileForLabel(label) {
+  if (/图标|头像/.test(label)) {
+    return { maxSize: 192, quality: 0.8 };
+  }
+
+  if (/背景|封面|海报/.test(label)) {
+    return { maxSize: 960, quality: 0.78 };
+  }
+
+  if (/主页展示/.test(label)) {
+    return { maxSize: 1280, quality: 0.8 };
+  }
+
+  return {};
+}
+
+async function imageFileToDataUrl(file, profile = {}) {
   if (!file.type.startsWith("image/")) {
     throw new Error("请选择图片文件。");
   }
@@ -6750,7 +6808,8 @@ async function imageFileToDataUrl(file) {
 
   try {
     const image = await loadImage(objectUrl);
-    const maxSize = 1400;
+    const maxSize = profile.maxSize || 1400;
+    const quality = profile.quality || 0.82;
     const ratio = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
     const width = Math.max(1, Math.round(image.naturalWidth * ratio));
     const height = Math.max(1, Math.round(image.naturalHeight * ratio));
@@ -6758,9 +6817,14 @@ async function imageFileToDataUrl(file) {
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
     context.drawImage(image, 0, 0, width, height);
 
-    return canvas.toDataURL("image/jpeg", 0.84);
+    const webp = canvas.toDataURL("image/webp", quality);
+    return webp.startsWith("data:image/webp")
+      ? webp
+      : canvas.toDataURL("image/jpeg", Math.min(0.9, quality + 0.04));
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -6895,26 +6959,60 @@ function linkMark(link) {
   return iconMark(link.iconText || "WEB", link.iconImage || "", faviconUrl(link.targetUrl));
 }
 
+const iconImageObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        loadIconImage(entry.target);
+        observer.unobserve(entry.target);
+      }
+    }, { rootMargin: "96px" })
+  : null;
+
 function iconMark(text, image, fallbackImage = "") {
-  const icon = element("span", "module-icon entry-icon", text || "WEB");
+  const fallbackText = text || "WEB";
+  const icon = element("span", "module-icon entry-icon", fallbackText);
   const src = image || fallbackImage;
+  icon.classList.toggle("has-long-text", Array.from(fallbackText).length > 4);
 
   if (src) {
-    icon.classList.add("has-image");
-    icon.textContent = "";
-    const img = document.createElement("img");
-    img.alt = "";
-    img.src = src;
-    img.loading = "lazy";
-    img.decoding = "async";
-    img.addEventListener("error", () => {
-      icon.classList.remove("has-image");
-      icon.replaceChildren(document.createTextNode(text || "WEB"));
-    });
-    icon.append(img);
+    icon.dataset.iconImage = src;
+    icon.dataset.iconFallback = fallbackText;
+
+    if (iconImageObserver) {
+      iconImageObserver.observe(icon);
+    } else {
+      loadIconImage(icon);
+    }
   }
 
   return icon;
+}
+
+function loadIconImage(icon) {
+  const src = icon.dataset.iconImage;
+  const fallback = icon.dataset.iconFallback || "WEB";
+
+  if (!src) return;
+  delete icon.dataset.iconImage;
+  delete icon.dataset.iconFallback;
+
+  const image = new Image();
+  image.alt = "";
+  image.width = 42;
+  image.height = 42;
+  image.decoding = "async";
+  image.fetchPriority = "low";
+  image.addEventListener("load", () => {
+    if (!icon.isConnected) return;
+    icon.classList.add("has-image");
+    icon.replaceChildren(image);
+  }, { once: true });
+  image.addEventListener("error", () => {
+    icon.classList.remove("has-image");
+    icon.replaceChildren(document.createTextNode(fallback));
+  }, { once: true });
+  image.src = src;
 }
 
 function textBlock(title, subtitle) {
@@ -7031,7 +7129,7 @@ const entryBackgroundObserver = "IntersectionObserver" in window
         revealEntryCardBackground(entry.target);
         observer.unobserve(entry.target);
       }
-    }, { rootMargin: "240px 0px" })
+    }, { rootMargin: "120px 0px" })
   : null;
 
 function revealEntryCardBackground(card) {

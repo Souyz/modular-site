@@ -506,14 +506,17 @@ color = Color(0.72, 0.8, 0.92, 1)
   nodes.push(plainNode("Route", "Node2D"));
   for (const beat of stage.beats) addBeatMarker(beat);
 
+  // The opening braid now uses clean, height-matched joins. The former
+  // 20px overlaps left dark lips at both low-route seams and a snag where the
+  // route climbed into the rejoin shelf.
   const b1a = addTerrain("B1Start", -40, 260, 780, [0, -50, -20, 0]);
-  const b1b = addTerrain("B1LowA", 720, 290, 700, [0, 14, -18, 0]);
-  const b1c = addTerrain("B1LowB", 1400, 310, 520, [0, -18, 6, 0]);
+  const b1b = addTerrain("B1LowA", 740, 290, 680, [0, 14, -18, 0]);
+  const b1c = addTerrain("B1LowB", 1420, 310, 500, [0, -18, 6, -45]);
   const b1d = addTerrainPolygon(
     "B1Rejoin",
-    1900,
+    1920,
     220,
-    [[0, 45], [80, 45], [80, 0], [420, 0]],
+    [[0, 45], [80, 45], [80, 0], [380, 0]],
     180
   );
   grounded("B1HighSpring", "Items/Mechanisms", "spring", b1a, 0.82, -8, {
@@ -523,7 +526,7 @@ color = Color(0.72, 0.8, 0.92, 1)
   const b1HighCloud1 = addCloud("B1HighCloud1", 900, 80, 9);
   const b1HighWood = addWood("B1HighWood", 1220, 38, 10);
   const b1HighCloud2 = addCloud("B1HighCloud2", 1540, 92, 9);
-  const b1HighCloud3 = addCloud("B1HighCloud3", 1740, 140, 9);
+  const b1HighCloud3 = addCloud("B1HighCloud3", 1760, 140, 9);
   assertConservativePlatformChain("B1HighRoute", [
     b1HighCloud1,
     b1HighWood,
@@ -537,20 +540,23 @@ color = Color(0.72, 0.8, 0.92, 1)
   grounded("B1SmallTree", "Items/Decoration", "smallTree", b1d, 0.74, -38);
   recordRoute(stage.beats[0], "main", [
     { x: 120, y: 250 }, { x: 650, y: 238 }, { x: 1080, y: 296 },
-    { x: 1620, y: 298 }, { x: 1900, y: 265 }, { x: 1980, y: 220 },
+    { x: 1620, y: 298 }, { x: 1920, y: 265 }, { x: 2000, y: 220 },
     { x: 2180, y: 214 }
   ]);
   recordRoute(stage.beats[0], "bonus", [
     { x: 600, y: 220 }, { x: 900, y: 80 }, { x: 1220, y: 38 },
-    { x: 1540, y: 92 }, { x: 1740, y: 140 }, { x: 1900, y: 265 },
+    { x: 1540, y: 92 }, { x: 1760, y: 140 }, { x: 1920, y: 265 },
     { x: 2070, y: 220 }
   ], { coinLimit: 4 });
 
   const b2a = addTerrain("B2Approach", 2300, 220, 780, [0, -18, 8, 0]);
-  const b2bottom = addTerrain("B2SafetyBasin", 3060, 340, 780, [0, 12, -8, 0]);
+  const b2bottom = addTerrain("B2SafetyBasin", 3080, 340, 760, [0, 12, -8, 0]);
   const b2landing = addTerrain("B2HighLanding", 3690, 20, 780, [0, -12, 8, 0]);
-  const b2exit = addTerrain("B2Exit", 4440, 100, 580, [0, 14, -8, 0]);
+  const b2exit = addTerrain("B2Exit", 4470, 100, 510, [0, 14, -8, 0]);
   addPivot("B2TeachingWheel", 3400, 150, 120, 4.2, 0.72);
+  grounded("B2WheelSign", "Items", "sign", b2a, 0.34, -3, {
+    lines: `Array[String](["[@n,慢轮练习]轮下是完整草盆；错过轮子就沿三块宽云台回到高处。"] )`
+  });
   grounded("B2FallbackSpring", "Items/Mechanisms", "spring", b2bottom, 0.64, -8, {
     launch_speed: "10.2",
     horizontal_boost: "2.1"
@@ -582,9 +588,9 @@ metadata/_llr_redundant_platforms_removed = 4
 
   const b3shoreA = addTerrain("B3ShoreA", 4980, 100, 620, [0, 12, -8, 0]);
   const b3islandA = addTerrain("B3WaterbedA", 5700, 430, 650, [0, -14, 10, 0]);
-  const b3islandB = addTerrain("B3WaterbedB", 6320, 480, 650, [0, 12, -8, 0]);
-  const b3islandC = addTerrain("B3WaterbedC", 6940, 420, 760, [0, -10, 14, 0]);
-  const b3shoreB = addTerrain("B3ShoreB", 7670, 80, 700, [0, 14, -8, 0]);
+  const b3islandB = addTerrain("B3WaterbedB", 6350, 430, 650, [0, 12, -8, 0]);
+  const b3islandC = addTerrain("B3WaterbedC", 7000, 430, 700, [0, -10, 14, 0]);
+  const b3shoreB = addTerrain("B3ShoreB", 7670, 80, 630, [0, 14, -8, 0]);
   addTerrainPolygon(
     "B3LeftWaterStairBank",
     5520,
@@ -686,7 +692,7 @@ metadata/_llr_void_required = false
   );
   const b4upper = addTerrain("B4Upper", 9900, -80, 600, [0, -10, 8, 0]);
   const b4top = addTerrain("B4Top", 10400, -380, 650, [0, 10, -8, 0]);
-  const b4exit = addTerrain("B4Exit", 10900, -220, 420, [0, -10, 0]);
+  const b4exit = addTerrain("B4Exit", 10900, -220, 200, [0, -10, 0]);
   addPivot("B4LowerWheel", 9100, 360, 112, 4.6, 0.4);
   nodes.push(`${plainNode("B4SafeTowerExitContract", "Node", "Route").trimEnd()}
 metadata/_llr_exit_stairs = true
@@ -735,13 +741,13 @@ metadata/_llr_void_required = false
   // overlap, combined with four thick mid/high terrain slabs, made the
   // screenshot's fake "gap": visually open but physically impassable.
   const b5lowA = addTerrain("B5LowA", 12250, 170, 790, [0, 16, -10, 0]);
-  const b5lowB = addTerrain("B5LowB", 13020, 240, 850, [0, -12, 14, 0]);
-  const b5lowC = addTerrain("B5LowC", 13840, 180, 880, [0, 18, -10, 0]);
+  const b5lowB = addTerrain("B5LowB", 13040, 240, 800, [0, -12, 14, 0]);
+  const b5lowC = addTerrain("B5LowC", 13840, 180, 740, [0, 18, -10, 0]);
   const b5end = addTerrainPolygon(
     "B5End",
     14580,
     80,
-    [[0, 50], [110, 50], [110, 0], [420, 0]],
+    [[0, 50], [110, 50], [110, 0], [250, 0]],
     180
   );
   grounded("B5LowSpring1", "Items/Mechanisms", "spring", b5lowA, 0.3, -8, {
@@ -762,12 +768,14 @@ metadata/_llr_optional_platform_count = 5
 metadata/_llr_max_optional_open_gap = 110
 metadata/_llr_void_required = false
 `);
-  grounded("B5Goomba1", "Items/Enemies", "goomba", b5lowA, 0.32, -12);
+  // Keep the shortcut spring's take-off lane clear, then alternate enemies
+  // with calm landing space instead of stacking hazards on rewards.
+  grounded("B5Goomba1", "Items/Enemies", "goomba", b5lowA, 0.62, -12);
   grounded("B5Goomba2", "Items/Enemies", "goomba", b5lowC, 0.58, -12);
-  grounded("B5Koopa", "Items/Enemies", "koopa", b5lowB, 0.5, -18, { type: "0" });
+  grounded("B5Koopa", "Items/Enemies", "koopa", b5lowB, 0.45, -18, { type: "0" });
   grounded("B5Tree1", "Items/Decoration", "smallTree", b5lowA, 0.18, -38);
-  grounded("B5Flowers", "Items/Decoration", "flowers", b5lowB, 0.52, -10);
-  airborne("B5HighBlueCoin", "Items/Pickups", "blueCoin", 14020, -330);
+  grounded("B5Flowers", "Items/Decoration", "flowers", b5lowB, 0.78, -10);
+  airborne("B5HighBlueCoin", "Items/Pickups", "blueCoin", 14020, -150);
   recordRoute(stage.beats[4], "main", [
     { x: 11120, y: -220 }, { x: 11620, y: -20 }, { x: 12180, y: 150 },
     { x: 12250, y: 170 }, { x: 12600, y: 175 }, { x: 13200, y: 235 }, { x: 13900, y: 180 },
@@ -780,19 +788,21 @@ metadata/_llr_void_required = false
     { x: 14320, y: 20 }, { x: 14580, y: 130 }
   ], { coinLimit: 5 });
 
-  const b6overlook = addTerrain("B6Overlook", 14830, 80, 720, [0, -12, 8, 0]);
+  const b6overlook = addTerrain("B6Overlook", 14830, 80, 690, [0, -12, 8, 0]);
   const b6trigger = addTerrain("B6TriggerGround", 15520, 80, 620, [0, 12, -8, 0]);
   const b6safeA = addTerrain("B6SafetyA", 16080, 420, 820, [0, -10, 10, 0]);
   const b6safeB = addTerrain("B6SafetyB", 16870, 430, 760, [0, 12, -8, 0]);
   const b6high = addTerrain("B6HighRoute", 16580, -260, 640, [0, -10, 8, 0]);
-  const b6exit = addTerrain("B6Exit", 17348, -180, 272, [0, -8, 0]);
+  const b6exit = addTerrain("B6Exit", 17320, -180, 180, [0, -8, 0]);
   addPivot("B6DemoWheel", 15280, -60, 78, 4.0, 0.2);
   addPivot("B6MainWheel", 16360, -102, 122, 5.1, 0.8);
   addCloud("B6MainWheelBoarding", 16200, 25, 9);
   addCloud("B6HighLanding", 16560, -212, 9);
-  addCloud("B6RecoveryLiftBottom", 17284, 400, 9);
+  // Static wait pads sit beside the lift rather than sharing its collider at
+  // the endpoints, so boarding and dismounting remain readable.
+  addCloud("B6RecoveryLiftBottom", 17110, 400, 9);
   addShuttle("B6RecoveryLift", 17284, 400, { x: 0, y: -610 }, 3.4, 0.15);
-  addCloud("B6RecoveryLiftTop", 17284, -235, 9);
+  addCloud("B6RecoveryLiftTop", 17450, -235, 9);
   nodes.push(`${plainNode("B6SafeRecoveryContract", "Node", "Route").trimEnd()}
 metadata/_llr_vertical_rescue = true
 metadata/_llr_void_required = false
@@ -823,11 +833,13 @@ metadata/_llr_min_landing_width = 144
     { x: 17420, y: -180 }
   ], { recoverySeconds: 14, coinLimit: 4 });
 
-  const b7start = addTerrain("B7Start", 17480, -180, 660, [0, 14, -8, 0]);
-  const b7t1 = addTerrain("B7Terrace1", 18110, -40, 620, [0, -10, 10, 0]);
-  const b7t2 = addTerrain("B7Terrace2", 18700, 120, 700, [0, 12, -8, 0]);
-  const b7t3 = addTerrain("B7Terrace3", 19370, 260, 760, [0, -12, 10, 0]);
-  const b7t4 = addTerrain("B7Terrace4", 20100, 360, 820, [0, 14, -8, 0]);
+  // Eight-pixel lips hide polygon cracks without the former 30px collision
+  // shelves at every terrace edge.
+  const b7start = addTerrain("B7Start", 17500, -180, 618, [0, 14, -8, 0]);
+  const b7t1 = addTerrain("B7Terrace1", 18110, -40, 598, [0, -10, 10, 0]);
+  const b7t2 = addTerrain("B7Terrace2", 18700, 120, 678, [0, 12, -8, 0]);
+  const b7t3 = addTerrain("B7Terrace3", 19370, 260, 738, [0, -12, 10, 0]);
+  const b7t4 = addTerrain("B7Terrace4", 20100, 360, 798, [0, 14, -8, 0]);
   const b7t5 = addTerrain("B7Terrace5", 20890, 420, 590, [0, -10, 8, 0]);
   addWater("B7RecoveryCreek", 17700, 520, 3900, 180);
   addTerrain("B7CreekBed1", 17700, 680, 800, [0, 4, -4, 0]);
@@ -842,10 +854,12 @@ metadata/_llr_min_landing_width = 144
   addPivot("B7DescentWheel2", 20680, 306, 102, 5.3, 1.2);
   addCloud("B7RestCloud1", 18300, -80, 9);
   addCloud("B7RestCloud2", 19700, 220, 9);
-  addCloud("B7CreekExitStep1", 21540, 573, 9);
-  addCloud("B7CreekExitStep2", 21540, 518, 9);
-  addCloud("B7CreekExitStep3", 21540, 463, 9);
-  addCloud("B7CreekExitStep4", 21540, 408, 9);
+  // The creek recovery now reads as a diagonal bank instead of five repeated
+  // jumps in place. Each 159px cloud overlaps the next route envelope.
+  addCloud("B7CreekExitStep1", 21280, 573, 9);
+  addCloud("B7CreekExitStep2", 21345, 518, 9);
+  addCloud("B7CreekExitStep3", 21410, 463, 9);
+  addCloud("B7CreekExitStep4", 21475, 408, 9);
   addCloud("B7CreekExitStep5", 21540, 353, 9);
   nodes.push(`${plainNode("B7SafeCreekContract", "Node", "Route").trimEnd()}
 metadata/_llr_continuous_creek_bed = true
@@ -875,8 +889,8 @@ metadata/_llr_min_landing_width = 144
   recordRoute(stage.beats[6], "recovery", [
     { x: 17800, y: 650 }, { x: 18500, y: 650 }, { x: 19200, y: 650 },
     { x: 19900, y: 650 }, { x: 20600, y: 650 }, { x: 21200, y: 650 },
-    { x: 21540, y: 573 }, { x: 21540, y: 518 }, { x: 21540, y: 463 },
-    { x: 21540, y: 408 }, { x: 21540, y: 353 }, { x: 21620, y: 300 }
+    { x: 21280, y: 573 }, { x: 21345, y: 518 }, { x: 21410, y: 463 },
+    { x: 21475, y: 408 }, { x: 21540, y: 353 }, { x: 21620, y: 300 }
   ], { recoverySeconds: 15, coinLimit: 5 });
 
   const b8start = addTerrain("B8Start", 21600, 300, 700, [0, -10, 8, 0]);
@@ -894,9 +908,9 @@ metadata/_llr_min_landing_width = 144
   addCloud("B8WheelSafety1", 22540, 202, 9);
   addCloud("B8WheelSafety2", 23380, 10, 9);
   addCloud("B8WheelSafety3", 24200, -212, 9);
-  addCloud("B8RecoveryLiftBottom", 24900, 450, 9);
+  addCloud("B8RecoveryLiftBottom", 24720, 450, 9);
   addShuttle("B8RecoveryLift", 24900, 450, { x: 0, y: -660 }, 3.6, 0.55);
-  addCloud("B8RecoveryLiftTop", 24900, -235, 9);
+  addCloud("B8RecoveryLiftTop", 24980, -235, 9);
   nodes.push(`${plainNode("B8SafeRecoveryContract", "Node", "Route").trimEnd()}
 metadata/_llr_vertical_rescue = true
 metadata/_llr_void_required = false

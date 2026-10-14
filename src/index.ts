@@ -340,6 +340,7 @@ const defaultAdminPassword = "admin";
 const defaultLimitedAdminPassword = "limited";
 const tokenMaxAgeMs = 12 * 60 * 60 * 1000;
 const maxAccessLogs = 1000;
+const externalLinkIconTextMaxLength = 8;
 const cubeCityLinkId = "builtin-cubecity";
 const cubeCityPath = "/llrgamecubecity";
 const llrMarioRunLinkId = "builtin-llr-mariorun";
@@ -1890,7 +1891,7 @@ function normalizeSiteLink(value: unknown, index: number): SiteLink {
     description: limitText(asString(record.description), 220),
     targetUrl: normalizeExternalUrl(asString(record.targetUrl || record.url || record.href)),
     visible: typeof record.visible === "boolean" ? record.visible : true,
-    iconText: limitText(asString(record.iconText) || "WEB", 4).toUpperCase(),
+    iconText: limitText(asString(record.iconText) || "WEB", externalLinkIconTextMaxLength).toUpperCase(),
     iconImage: normalizeImageSrc(asString(record.iconImage)),
     backgroundImage: normalizeImageSrc(asString(record.backgroundImage))
   };
@@ -2174,13 +2175,41 @@ function normalizeExternalUrl(value: string): string {
   }
 }
 
-async function fetchSiteMedia(request: Request, env: AppEnv, fileName: string): Promise<Response> {
+async function fetchSiteMedia(
+  request: Request,
+  env: AppEnv,
+  fileName: string,
+  ctx: ExecutionContext
+): Promise<Response> {
   if (!["GET", "HEAD"].includes(request.method)) {
     return json({ error: "Method Not Allowed" }, 405);
   }
 
   if (!env.SITE_CONFIG || !/^[a-f0-9]{64}\.(?:png|jpe?g|webp|gif|avif)$/i.test(fileName)) {
     return json({ error: "Site media not found" }, 404);
+  }
+
+  const canonicalUrl = new URL(request.url);
+  canonicalUrl.search = "";
+  const cacheKey = new Request(canonicalUrl.toString(), { method: "GET" });
+  const etag = `"${fileName.split(".")[0]}"`;
+  const notModified = request.headers.get("if-none-match")?.split(",").some((value) => {
+    const candidate = value.trim();
+    return candidate === "*" || candidate === etag;
+  });
+  const cached = await caches.default.match(cacheKey);
+
+  if (cached) {
+    const headers = new Headers(cached.headers);
+    headers.set("etag", etag);
+
+    if (notModified) {
+      return new Response(null, { status: 304, headers });
+    }
+
+    return request.method === "HEAD"
+      ? new Response(null, { status: cached.status, headers })
+      : new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
   }
 
   const object = await env.SITE_CONFIG.getWithMetadata<{
@@ -2195,10 +2224,18 @@ async function fetchSiteMedia(request: Request, env: AppEnv, fileName: string): 
   const headers = new Headers({
     "content-type": object.metadata?.contentType || contentTypeForSiteMedia(fileName),
     "cache-control": object.metadata?.cacheControl || "public, max-age=31536000, immutable",
+    etag,
     "x-content-type-options": "nosniff"
   });
 
-  return new Response(request.method === "HEAD" ? null : object.value, { headers });
+  if (notModified) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  const response = new Response(object.value, { headers });
+  ctx.waitUntil(caches.default.put(cacheKey, response.clone()).catch(() => undefined));
+
+  return request.method === "HEAD" ? new Response(null, { headers }) : response;
 }
 
 function contentTypeForSiteMedia(fileName: string): string {
@@ -3797,7 +3834,7 @@ export default {
 
     if (url.pathname.startsWith(siteMediaPathPrefix)) {
       const fileName = decodeURIComponent(url.pathname.slice(siteMediaPathPrefix.length));
-      return fetchSiteMedia(request, env as AppEnv, fileName);
+      return fetchSiteMedia(request, env as AppEnv, fileName, ctx);
     }
 
     if (url.pathname === "/api/admin/game/assets" && request.method === "POST") {

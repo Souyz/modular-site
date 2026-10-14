@@ -1,3 +1,4 @@
+import { resolveGodot } from "./resolve-godot.mjs";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -6,9 +7,8 @@ import { createHash } from "node:crypto";
 import { brotliCompressSync, constants as zlibConstants, gunzipSync, gzipSync } from "node:zlib";
 
 const root = process.cwd();
-const tempRoot = process.env.TEMP || tmpdir();
 const appData = process.env.APPDATA || join(process.env.USERPROFILE || process.env.HOME || root, "AppData", "Roaming");
-const godot = join(tempRoot, "godot-4.3-tools", "godot", "Godot_v4.3-stable_win64_console.exe");
+const godot = resolveGodot(root);
 const project = join(root, "vendor", "Legacy_SM63Redux");
 const outDir = mkdtempSync(join(tmpdir(), "llr-mariorun-export-"));
 const exportedPck = join(outDir, "index.pck");

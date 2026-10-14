@@ -175,14 +175,18 @@ export function buildV4StageTenScene(context) {
       visible,
       "metadata/_llr_bell_order": String(order)
     });
-    addPlainNode(`${name}Clapper`, "Polygon2D", "Items/Decoration", {
-      z_index: "5",
-      position: vector(x, y + radius * 0.8),
-      polygon: packed([[-7, -6], [7, -6], [10, 6], [-10, 6]]),
-      color: "Color(0.28, 0.12, 0.06, 1)",
-      visible,
-      "metadata/_llr_bell_order": String(order)
-    });
+    const paths = [`../Items/Decoration/${name}Bell`];
+    if (!options.compact) {
+      addPlainNode(`${name}Clapper`, "Polygon2D", "Items/Decoration", {
+        z_index: "5",
+        position: vector(x, y + radius * 0.8),
+        polygon: packed([[-7, -6], [7, -6], [10, 6], [-10, 6]]),
+        color: "Color(0.28, 0.12, 0.06, 1)",
+        visible,
+        "metadata/_llr_bell_order": String(order)
+      });
+      paths.push(`../Items/Decoration/${name}Clapper`);
+    }
     addPlainNode(`${name}Number`, "Label", "Items/Decoration", {
       z_index: "6",
       position: vector(x - 10, y - 21),
@@ -194,11 +198,8 @@ export function buildV4StageTenScene(context) {
       visible,
       "metadata/_llr_bell_order": String(order)
     });
-    return [
-      `../Items/Decoration/${name}Bell`,
-      `../Items/Decoration/${name}Clapper`,
-      `../Items/Decoration/${name}Number`
-    ];
+    paths.push(`../Items/Decoration/${name}Number`);
+    return paths;
   }
 
   function addAudienceRow(prefix, startX, y, count, spacing, color) {
@@ -207,16 +208,16 @@ export function buildV4StageTenScene(context) {
       addPlainNode(`${prefix}Student${index + 1}`, "Polygon2D", "Items/Decoration", {
         z_index: "-1",
         position: vector(x, y + (index % 2) * 5),
-        polygon: packed([[-10, -25], [10, -25], [15, 2], [10, 32], [-10, 32], [-15, 2]]),
+        // One deliberate silhouette replaces the former separate body/head
+        // pair, keeping the crowd readable without doubling scene nodes.
+        polygon: packed([
+          [-10, 32], [-15, 2], [-11, -24], [-7, -28], [-11, -35],
+          [-9, -43], [-4, -49], [4, -49], [9, -43], [11, -35],
+          [7, -28], [11, -24], [15, 2], [10, 32]
+        ]),
         color,
-        "metadata/_llr_waiting_student": "true"
-      });
-      addPlainNode(`${prefix}StudentHead${index + 1}`, "Polygon2D", "Items/Decoration", {
-        z_index: "0",
-        position: vector(x, y - 35 + (index % 2) * 5),
-        polygon: packed([[-9, -8], [0, -12], [9, -8], [12, 0], [8, 9], [0, 12], [-8, 9], [-12, 0]]),
-        color: "Color(0.91, 0.68, 0.5, 1)",
-        "metadata/_llr_waiting_student": "true"
+        "metadata/_llr_waiting_student": "true",
+        "metadata/_llr_compact_silhouette": "true"
       });
     }
   }
@@ -232,6 +233,25 @@ export function buildV4StageTenScene(context) {
       "metadata/_llr_bell_signal": "true"
     });
     return `../Items/Decoration/${name}`;
+  }
+
+  function addSectionBanner(name, x, y, label, color, width = 210) {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x, y),
+      polygon: packed([[-width / 2, -24], [width / 2, -24], [width / 2 + 12, 0], [width / 2, 24], [-width / 2, 24], [-width / 2 - 12, 0]]),
+      color,
+      "metadata/_llr_section_landmark": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x - width / 2 + 14, y - 18),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.12, 0.07, 0.12, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.9)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "19"
+    });
   }
 
   const expectedSeconds = stage.beats.reduce((sum, item) => sum + item.seconds, 0);
@@ -436,6 +456,7 @@ export function buildV4StageTenScene(context) {
     antialiased: "true",
     "metadata/_llr_route_map": "true"
   });
+  addSectionBanner("B4WingChoiceBanner", 10900, 35, "← 左侧席 · 中央 · 右侧席 →", "Color(0.48, 0.82, 1, 0.95)", 320);
   addDirector("B4BackstageCheckpoint", 10800, 145, {
     announcement: "后台休息：左右侧席可任选顺序，完成后回中央",
     checkpoint: true,
@@ -653,6 +674,7 @@ export function buildV4StageTenScene(context) {
 
   // Beat 7.1: one wide Shuttle is isolated between broad static departure and arrival floors.
   const b7shuttleEntry = addTerrain("B7ShuttleDeparture", 22400, 240, 700, [0, 3, -3, 0]);
+  addSectionBanner("B7MovementOneBanner", 22720, 150, "I · 宽摆渡", "Color(0.4, 0.78, 1, 0.96)");
   addShuttle("B7FinaleWideShuttle", 23000, 240, { x: 760, y: 0 }, {
     travelSeconds: 3.2, pauseSeconds: 0.7, phase: 0.08, scaleX: 3.0, walkableWidth: 288
   });
@@ -670,6 +692,7 @@ export function buildV4StageTenScene(context) {
     launch_speed: "10.4",
     horizontal_boost: "2.0"
   });
+  addSectionBanner("B7MovementTwoBanner", 24460, 120, "II · 弹簧", "Color(1, 0.7, 0.28, 0.96)");
   const b7springLanding = addWood("B7SpringStableLanding", 24850, -80, 12);
   addWood("B7SpringDescentLanding", 25200, 20, 10);
   const b7hoverStart = addTerrain("B7HoverStableStart", 25500, 160, 500, [0, -3, 3, 0]);
@@ -683,6 +706,7 @@ export function buildV4StageTenScene(context) {
 
   // Beat 7.3: a real Hover pickup and one-shot nozzle select precede three broad, closely spaced clouds.
   airborne("B7FinaleHoverPickup", "Items/Pickups", "fluddHover", 25740, 108);
+  addSectionBanner("B7MovementThreeBanner", 26340, -35, "III · 短 Hover", "Color(0.42, 0.9, 0.72, 0.96)");
   addInstance("B7HoverSelectDirector", ".", "director", {
     position: vector(25800, 90),
     trigger_size: vector(280, 220),
@@ -713,6 +737,7 @@ export function buildV4StageTenScene(context) {
 
   // Beat 7.4: the short Thwomp corridor has continuous ground and broad side waiting bays.
   const b7thwompFloor = addGroundChain("B7ShortThwompCorridor", 27600, 29600, 240, [0, 3, -3, 0]);
+  addSectionBanner("B7MovementFourBanner", 28200, 110, "IV · 短冲压", "Color(0.9, 0.48, 0.34, 0.96)");
   [28000, 28600, 29200].forEach((x, index) => {
     airborne(`B7FinaleThwomp${index + 1}`, "Items/Enemies", "thwomp", x, -120, {
       attack_mode: "0",
@@ -765,7 +790,8 @@ export function buildV4StageTenScene(context) {
     finalBridge.push(addDormantWood(`B8VictoryRoad${index + 1}`, x, 240, 10));
     finalBellVisuals.push(...addBellFacade(`B8VictoryBell${index + 1}`, x, 125, index + 1, {
       radius: 22,
-      visible: false
+      visible: false,
+      compact: true
     }));
   }
   assertConservativePlatformChain("Stage10FinalVictoryRoad", finalBridge, {
@@ -778,8 +804,11 @@ export function buildV4StageTenScene(context) {
     radius: 38,
     fontSize: 22,
     visible: false,
-    color: "Color(1, 0.82, 0.22, 1)"
+    color: "Color(1, 0.82, 0.22, 1)",
+    compact: true
   });
+  addSectionBanner("B8FinalBellBanner", 29950, 30, "第十响 · 最后一砸", "Color(1, 0.78, 0.28, 0.97)", 240);
+  addSectionBanner("B8VictoryRoadBanner", 31650, 40, "十响齐鸣 · 胜利直路", "Color(1, 0.88, 0.48, 0.96)", 270);
   addDirector("B8BuildVictoryRoadDirector", 0, 0, {
     objectives: [b8finalTarget],
     waitForObjectives: true,

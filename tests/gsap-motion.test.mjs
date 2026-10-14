@@ -7,9 +7,12 @@ const publicMotion = readFileSync(new URL("../client/public-motion.js", import.m
 const appSource = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
 
-test("public app prepares GSAP motion before revealing the rendered page", () => {
+test("public app gives GSAP a short budget without blocking the rendered page", () => {
   assert.match(publicEntry, /import\("\.\/public-motion\.js"\)/);
-  assert.match(publicEntry, /beforeReveal:\s*async \(\) => \(await publicMotionReady\)\?\.prepare\(\)/);
+  assert.match(publicEntry, /const publicMotionBudgetMs = 120/);
+  assert.match(publicEntry, /Promise\.race\(\[/);
+  assert.match(publicEntry, /beforeReveal:\s*preparePublicMotionWithinBudget/);
+  assert.match(publicEntry, /if \(publicMotionEnabled\)/);
   assert.match(publicEntry, /prefers-reduced-motion: reduce/);
   assert.match(appSource, /typeof options\.beforeReveal === "function"/);
   assert.match(appSource, /await options\.beforeReveal\(\)[\s\S]*?classList\.remove\("app-booting"\)/);

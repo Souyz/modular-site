@@ -159,6 +159,15 @@ export function buildV4StageSixScene(context) {
       polygon: packed([[24, -152], [34, -152], [34, -8], [24, -8]]),
       color: "Color(1, 0.84, 0.28, 1)"
     });
+    addPlainNode(`${name}Number`, "Label", `Terrain/${name}`, {
+      z_index: "5",
+      position: vector(-13, -190),
+      text: JSON.stringify(String(number)),
+      "theme_override_colors/font_color": "Color(1, 0.92, 0.45, 1)",
+      "theme_override_colors/font_outline_color": "Color(0.04, 0.16, 0.26, 1)",
+      "theme_override_constants/outline_size": "5",
+      "theme_override_font_sizes/font_size": "26"
+    });
   }
 
   function addGateTrigger(number, x, roadY) {
@@ -192,6 +201,36 @@ export function buildV4StageSixScene(context) {
     });
   }
 
+  function addRoadGuide(name, points, color, width = 8) {
+    addPlainNode(name, "Line2D", "Items/Decoration", {
+      z_index: "3",
+      points: packed(points),
+      width: String(width),
+      default_color: color,
+      antialiased: "true",
+      "metadata/_llr_road_marking": "true"
+    });
+  }
+
+  function addRoadBadge(name, x, y, label, color) {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x, y),
+      polygon: packed([[-82, -23], [82, -23], [82, 23], [-82, 23]]),
+      color,
+      "metadata/_llr_functional_wayfinding": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x - 70, y - 17),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.05, 0.11, 0.16, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.9)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "18"
+    });
+  }
+
   addContract("V4StageSixStructureContract", {
     target_seconds: 212,
     beat_count: 8,
@@ -222,6 +261,10 @@ export function buildV4StageSixScene(context) {
     height: 220
   });
   addSoftBuffer("B1EndSoftBuffer", 2270, 70, 120, 250);
+  addRoadGuide("B1AccelerationMarking", [[180, 292], [1680, 292]], "Color(0.18, 0.82, 1, 0.72)");
+  addRoadGuide("B1DecelerationMarking", [[1680, 292], [2210, 356]], "Color(1, 0.68, 0.2, 0.82)", 10);
+  addRoadBadge("B1AccelerationBadge", 620, 190, "按住喷水 · 加速", "Color(0.38, 0.86, 1, 0.95)");
+  addRoadBadge("B1BrakeBadge", 1930, 190, "松开喷水 · 减速", "Color(1, 0.72, 0.32, 0.96)");
   addContract("B1RealTurboTestContract", {
     real_fludd_turbo_scene: true,
     forced_nozzle: 3,
@@ -285,6 +328,14 @@ export function buildV4StageSixScene(context) {
     minLandingWidth: 320
   });
   airborne("B3HighwayBottle", "Items/Pickups", "bottle", 7530, 145);
+  addRoadGuide("B3HighwayFastLine", [
+    [5480, 338], [6070, 230], [6860, 170], [7760, 160], [8640, 210], [9000, 286]
+  ], "Color(0.25, 0.72, 1, 0.74)");
+  addRoadGuide("B3ShallowSafeLine", [
+    [5600, 470], [6500, 510], [7450, 510], [8350, 510], [9000, 335]
+  ], "Color(0.3, 0.9, 0.72, 0.72)");
+  addRoadBadge("B3FastRouteBadge", 6180, 110, "高架 · 快线", "Color(0.35, 0.78, 1, 0.95)");
+  addRoadBadge("B3SafeRouteBadge", 6800, 445, "浅水 · 稳线", "Color(0.38, 0.9, 0.72, 0.95)");
   addContract("B3DualRouteContract", {
     high_route_platform_count: b3high.length,
     high_route_min_width: 384,
@@ -369,6 +420,10 @@ export function buildV4StageSixScene(context) {
   addWood("B5Gate1StopBay", 12400, 220, 10);
   addWood("B5Gate2StopBay", 14020, 220, 10);
   addWood("B5Gate3StopBay", 15380, 220, 10);
+  addRoadGuide("B5ThreeGateRacingLine", [
+    [10920, 286], [11590, 198], [12046, 198], [12400, 198],
+    [13200, 198], [13664, 198], [14020, 198], [14760, 198], [15380, 198]
+  ], "Color(1, 0.82, 0.22, 0.78)", 9);
   assertConservativePlatformChain("B5GateOneMomentumGap", b5gate1, {
     maxGap: 80, maxRise: 0, minLandingWidth: 320
   });
@@ -427,6 +482,15 @@ export function buildV4StageSixScene(context) {
   addSoftBuffer("B6RightBrakeWall", 17820, 20, 130, 450, "Color(0.25, 0.7, 0.82, 0.94)");
   addSoftBuffer("B6LeftTurnWall", 15640, 250, 110, 245, "Color(0.25, 0.7, 0.82, 0.94)");
   addRedSignal("B6RedBrakeSignal", 17480, 80);
+  addRoadGuide("B6HairpinGuide", [
+    [15520, 198], [17180, 198], [17690, 398], [17000, 398], [16020, 398], [15770, 620], [19320, 620]
+  ], "Color(1, 0.3, 0.18, 0.78)", 10);
+  [17180, 16620, 16060].forEach((x, index) => {
+    airborne(`B6ReverseDirectionArrow${index + 1}`, "Items/Decoration", "arrow", x, 360, {
+      rotation: "3.14159"
+    });
+  });
+  addRoadBadge("B6BrakeInstructionBadge", 17220, 35, "红灯松喷 · 向左折返", "Color(1, 0.42, 0.3, 0.96)");
   addTurboDirector("B6BrakeDirector", 17360, 135, {
     announcement: "红灯：松开喷水，让逆带带你向左折返",
     checkpoint: true,
@@ -495,6 +559,14 @@ export function buildV4StageSixScene(context) {
     height: 240
   });
   airborne("B7OverpassBottle", "Items/Pickups", "bottle", 23280, 215);
+  addRoadGuide("B7OverpassFastLine", [
+    [20400, 386], [20900, 270], [21212, 263], [22244, 258], [23280, 253], [24300, 258], [24800, 345]
+  ], "Color(0.3, 0.72, 1, 0.74)");
+  addRoadGuide("B7LowRoadSafeLine", [
+    [20700, 620], [21800, 620], [22900, 620], [23800, 620], [24800, 395]
+  ], "Color(0.3, 0.9, 0.72, 0.72)");
+  addRoadBadge("B7OverpassBadge", 21850, 155, "保持速度 · 高架", "Color(0.36, 0.78, 1, 0.95)");
+  addRoadBadge("B7LowRoadBadge", 22450, 565, "失手继续 · 低路", "Color(0.4, 0.9, 0.7, 0.95)");
   addContract("B7DualLayerContract", {
     checkpoint: true,
     momentum_ramp_count: 3,
@@ -537,6 +609,9 @@ export function buildV4StageSixScene(context) {
     width: 340,
     height: 250
   });
+  addRoadGuide("B8FullSpeedMarking", [[25250, 292], [27000, 292]], "Color(0.2, 0.82, 1, 0.74)", 9);
+  addRoadGuide("B8LongBrakeMarking", [[27000, 292], [28120, 292]], "Color(1, 0.62, 0.2, 0.82)", 11);
+  addRoadBadge("B8BrakeZoneBadge", 27350, 210, "终点前 · 长减速区", "Color(1, 0.68, 0.28, 0.96)");
   addSoftBuffer("B8FinishSoftBuffer", 28310, 80, 150, 300, "Color(0.9, 0.47, 0.3, 0.94)");
   addContract("B8EnemyFreeReleaseContract", {
     enemy_count: 0,

@@ -239,8 +239,10 @@ export function buildV4StageFiveScene(context) {
   // A permanent lower line catches every fall before the death plane. It is a slower route,
   // not a respawn substitute, and is punctuated by solid recovery stations.
   const recoveryClouds = [];
-  for (let x = 120, index = 1; x <= stage.levelWidth + 120; x += 300, index += 1) {
-    recoveryClouds.push(addCloud(`RecoveryCloud${index}`, x, RECOVERY_Y, 20));
+  // Wider, less frequent clouds keep the recovery line physically seamless
+  // while removing the picket-fence repetition visible across the whole level.
+  for (let x = 120, index = 1; x <= stage.levelWidth + 120; x += 400, index += 1) {
+    recoveryClouds.push(addCloud(`RecoveryCloud${index}`, x, RECOVERY_Y, 26));
   }
   assertConservativePlatformChain("ContinuousRecoveryCloudLine", recoveryClouds, {
     maxGap: 0,
@@ -255,7 +257,7 @@ export function buildV4StageFiveScene(context) {
     continuous_cloud_line: true,
     solid_recovery_island_count: recoveryIslands.length,
     maximum_open_gap: 0,
-    minimum_cloud_width: 335,
+    minimum_cloud_width: 431,
     death_plane_required_for_progress: false,
     recovery_route_is_forward_only: true,
     void_required: false
@@ -335,6 +337,7 @@ export function buildV4StageFiveScene(context) {
   addRouteLine("B2OrangeTravelTrace", "Color(1, 0.58, 0.14, 0.7)", [
     [2350, 240], [2350, -80], [2860, -80]
   ], { "metadata/_llr_actual_freight_trace": "true" });
+  addStationMarker("B2LiftStation", 2650, -165, "Color(1, 0.64, 0.24, 0.95)", "02 升降站", "orange-vertical");
   airborne("B2LiftArrow", "Items/Decoration", "arrow", 2350, 70, { rotation: "-1.5708" });
   grounded("B2UpperBottle", "Items/Pickups", "bottle", b2upperA, 0.58, -30);
   addContract("B2LiftSafetyContract", {
@@ -387,6 +390,7 @@ export function buildV4StageFiveScene(context) {
   addRouteLine("B3BlueTwoLegTrace", "Color(0.2, 0.68, 1, 0.72)", [
     [4320, -80], [4840, -80], [5330, -80], [5830, -80], [6390, -80], [6740, -80]
   ], { "metadata/_llr_actual_freight_trace": "true" });
+  addStationMarker("B3WarehouseStation", 5330, -165, "Color(0.32, 0.72, 1, 0.95)", "03 清箱站", "blue-horizontal");
   addContract("B3StaticMidwayStopContract", {
     freight_leg_count: 2,
     first_leg_width: b3legOne.walkableWidth,
@@ -433,6 +437,7 @@ export function buildV4StageFiveScene(context) {
         "metadata/_llr_countdown_order": String(index + 1)
       });
     });
+  addStationMarker("B4DispatchStation", 7780, 45, "Color(0.84, 0.88, 0.96, 0.96)", "中央调度", "dispatch-hub");
   addContract("B4DispatchRestContract", {
     static_checkpoint: true,
     moving_platform_count: 0,
@@ -503,6 +508,7 @@ export function buildV4StageFiveScene(context) {
   addRouteLine("B5OrangeVerticalTrace", "Color(1, 0.58, 0.14, 0.72)", [
     [9840, 120], [9840, -240], [10450, -240]
   ], { "metadata/_llr_actual_freight_trace": "true" });
+  addStationMarker("B5TransferStation", 9410, 45, "Color(0.92, 0.9, 0.56, 0.96)", "蓝橙换乘", "transfer-island");
   airborne("B5UpperBottle", "Items/Pickups", "bottle", 10650, -290);
   addContract("B5TransferSafetyContract", {
     horizontal_width: b5horizontal.walkableWidth,
@@ -595,6 +601,10 @@ export function buildV4StageFiveScene(context) {
   addRouteLine("B6LastTrainTrace", "Color(0.2, 0.68, 1, 0.72)", [
     [12000, -240], [12600, -240], [13450, -240], [13900, -240]
   ], { "metadata/_llr_actual_freight_trace": "true" });
+  addRouteLine("B6MaintenanceTrace", "Color(0.3, 0.86, 0.48, 0.78)", [
+    [11530, 600], [11810, 490], [12350, 490], [12900, 490], [13450, 490], [14040, 300]
+  ], { "metadata/_llr_line_id": JSON.stringify("green-maintenance") });
+  addStationMarker("B6LastTrainStation", 11620, -350, "Color(0.28, 0.7, 1, 0.96)", "末班车 7.8秒", "blue-last-train");
   addContract("B6GentleLastTrainContract", {
     actual_mode_property: 2,
     actual_activation_radius: 560,
@@ -689,9 +699,18 @@ export function buildV4StageFiveScene(context) {
       position: vector(x, -330),
       polygon: packed([[-24, -18], [24, -18], [24, 18], [-24, 18]]),
       color: "Color(1, 0.25, 0.16, 0.95)",
-      "metadata/_llr_warning_lead_seconds": "1.5"
+        "metadata/_llr_warning_lead_seconds": "1.5"
+      });
+      addPlainNode(`B7WarningNumber${index + 1}`, "Label", "Items/Decoration", {
+        z_index: "6",
+        position: vector(x - 8, -347),
+        text: JSON.stringify(String(index + 1)),
+        "theme_override_colors/font_color": "Color(1, 1, 1, 1)",
+        "theme_override_colors/font_outline_color": "Color(0.25, 0.04, 0.03, 1)",
+        "theme_override_constants/outline_size": "4",
+        "theme_override_font_sizes/font_size": "18"
+      });
     });
-  });
   addRecoveryStair("B7LowerToRelay", 17480, 300, 18000, 80, 5);
   addContract("B7LayeredCollapseContract", {
     warning_lead_seconds: 1.5,
@@ -723,6 +742,12 @@ export function buildV4StageFiveScene(context) {
   const b8stationTwo = addTerrain("B8RelayStationTwo", 18480, 80, 360, [0, 0, 0]);
   const b8stationThree = addTerrain("B8RelayStationThree", 19120, 80, 360, [0, 0, 0]);
   const b8finish = addGroundRun("B8StraightFinishRoad", 19760, 20520, 80, [0, 0, 0, 0]);
+  addStationMarker("B8RelayStationMarker1", 18100, 5, "Color(0.34, 0.78, 1, 0.96)", "接力 1/3", "relay-one");
+  addStationMarker("B8RelayStationMarker2", 18660, 5, "Color(1, 0.66, 0.24, 0.96)", "接力 2/3", "relay-two");
+  addStationMarker("B8RelayStationMarker3", 19300, 5, "Color(0.42, 0.9, 0.56, 0.96)", "接力 3/3", "relay-three");
+  addRouteLine("B8AlignedRoadTrace", "Color(1, 0.82, 0.26, 0.78)", [
+    [17980, 58], [18355, 58], [18980, 58], [19620, 58], [20450, 58]
+  ], { "metadata/_llr_final_alignment_preview": "true" });
   const relayOne = addSingleTripFreight("B8RelayBridgeOne", 18355, 420, { x: 0, y: -340 }, {
     triggerX: 18100,
     triggerY: 35,

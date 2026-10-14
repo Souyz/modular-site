@@ -5,10 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f1f5f3" />
     <title>宽宽的模块化网站</title>
-    <link rel="stylesheet" href="/site-assets/styles-c739c9b13892.css" data-site-styles />
+    <link rel="stylesheet" href="/site-assets/styles-a8f3fa22e494.css" data-site-styles />
     <script type="module" data-site-bootstrap>
   const route = location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
-  void import(route === "admin" ? "/site-assets/admin/app-TP7NNMHY.js" : "/site-assets/public/app-RPDCLBDB.js");
+  if (route !== "admin") {
+    const publicRoute = decodeURIComponent(location.pathname).replace(/^\/+|\/+$/g, "").toLowerCase();
+    const configPreload = document.createElement("link");
+    configPreload.rel = "preload";
+    configPreload.as = "fetch";
+    configPreload.crossOrigin = "anonymous";
+    configPreload.href = `/api/site-config${publicRoute ? `?route=${encodeURIComponent(publicRoute)}` : ""}`;
+    document.head.append(configPreload);
+  }
+  void import(route === "admin" ? "/site-assets/admin/app-NU5IKGOT.js" : "/site-assets/public/app-7BKLKR3I.js");
 </script>
     <style>
       html.app-booting,
@@ -46,8 +55,7 @@
         overflow: hidden;
         border-radius: 18px;
         background: linear-gradient(110deg, #e7eeeb 22%, #f3f7f5 42%, #e7eeeb 62%);
-        background-size: 220% 100%;
-        animation: boot-shimmer 1.6s ease-in-out infinite;
+        animation: boot-pulse 1.5s ease-in-out infinite;
       }
       .boot-title {
         width: min(430px, 72vw);
@@ -69,9 +77,9 @@
       .boot-card {
         min-height: 210px;
       }
-      @keyframes boot-shimmer {
-        0%, 100% { background-position: 100% 0; }
-        50% { background-position: 0 0; }
+      @keyframes boot-pulse {
+        0%, 100% { opacity: 0.72; }
+        50% { opacity: 1; }
       }
       @media (max-width: 860px) {
         .boot-shell {

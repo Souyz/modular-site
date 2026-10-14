@@ -64,6 +64,15 @@ async function updateIndex({ publicEntry, adminEntry, stylePath }) {
   const bootstrap = [
     '<script type="module" data-site-bootstrap>',
     '  const route = location.pathname.replace(/^\\/+|\\/+$/g, "").split("/")[0];',
+    '  if (route !== "admin") {',
+    '    const publicRoute = decodeURIComponent(location.pathname).replace(/^\\/+|\\/+$/g, "").toLowerCase();',
+    '    const configPreload = document.createElement("link");',
+    '    configPreload.rel = "preload";',
+    '    configPreload.as = "fetch";',
+    '    configPreload.crossOrigin = "anonymous";',
+    '    configPreload.href = `/api/site-config${publicRoute ? `?route=${encodeURIComponent(publicRoute)}` : ""}`;',
+    '    document.head.append(configPreload);',
+    '  }',
     `  void import(route === "admin" ? "${adminEntry}" : "${publicEntry}");`,
     "</script>"
   ].join("\n");

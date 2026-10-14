@@ -9,3 +9,8 @@ vendor/Legacy_SM63Redux/
 dist/
 *.log
 .firecrawl/
+
+.codex-cache/
+.playwright-cli/
+output/
+client/node_modules/

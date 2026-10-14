@@ -9,7 +9,7 @@ const indexSource = readFileSync(new URL("../public/index.html", import.meta.url
 test("public config and unlocked page data do not keep stale blog articles", () => {
   assert.match(workerSource, /"cache-control": "no-store"/);
   assert.match(appSource, /cache: "no-store"/);
-  assert.match(appSource, /api\.getJson\(`\/api\/site-config\$\{query\}`,\s*false,\s*"no-cache"\)/);
+  assert.match(appSource, /api\.getJson\(`\/api\/site-config\$\{query\}`,\s*false,\s*"no-cache",\s*"same-origin"\)/);
   assert.match(workerSource, /conditionalJson\(request,\s*{\s*config:/);
   assert.match(workerSource, /headers\.set\("cache-control", "private, no-cache, must-revalidate"\)/);
   assert.match(workerSource, /headers\.set\("etag", etag\)/);
@@ -36,6 +36,8 @@ test("the initial page renders a lightweight shell before dynamic config arrives
   assert.match(indexSource, /<script type="module" data-site-bootstrap>[\s\S]*?site-assets\/admin\/app-[A-Z0-9]+\.js[\s\S]*?site-assets\/public\/app-[A-Z0-9]+\.js[\s\S]*?<\/script>[\s\S]*?<body>/);
   assert.match(indexSource, /site-assets\/styles-[a-f0-9]+\.css/);
   assert.match(indexSource, /class="boot-shell"/);
+  assert.match(indexSource, /configPreload\.rel = "preload"/);
+  assert.match(indexSource, /configPreload\.as = "fetch"/);
   assert.match(appSource, /homeEntryLayout: localStorage\.getItem\(homeLayoutKey\) === "one" \? "one" : "two"/);
   assert.match(appSource, /async function loadModulesForPage\(page\)/);
 });

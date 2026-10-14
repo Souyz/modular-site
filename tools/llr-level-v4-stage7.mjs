@@ -59,7 +59,9 @@ export function buildV4StageSevenScene(context) {
   const b = createV4SceneBuilder(context);
   const {
     vector,
+    packed,
     addInstance,
+    addPlainNode,
     addContract,
     addTerrain,
     grounded,
@@ -106,6 +108,49 @@ export function buildV4StageSevenScene(context) {
     });
   }
 
+  function addFlightRibbon(name, points, color, width = 8) {
+    addPlainNode(name, "Line2D", "Items/Decoration", {
+      z_index: "-2",
+      points: packed(points),
+      width: String(width),
+      default_color: color,
+      antialiased: "true",
+      "metadata/_llr_flight_route_preview": "true"
+    });
+  }
+
+  function addFlightBadge(name, x, y, label, color) {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x, y),
+      polygon: packed([[-76, -22], [76, -22], [86, 0], [76, 22], [-76, 22], [-86, 0]]),
+      color,
+      "metadata/_llr_functional_landmark": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x - 66, y - 17),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.06, 0.12, 0.16, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.9)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "18"
+    });
+  }
+
+  function addLiftBeacon(name, x, topY, label) {
+    addFlightRibbon(`${name}Line`, [[x, 620], [x, topY]], "Color(0.3, 0.9, 0.72, 0.72)", 6);
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x + 18, 555),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.08, 0.35, 0.28, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.92)",
+      "theme_override_constants/outline_size": "4",
+      "theme_override_font_sizes/font_size": "17"
+    });
+  }
+
   // A far-below physical recovery deck spans every airborne beat.
   const recoveryDeck = addGroundChain("ValleyRecoveryDeck", 1850, 23200, 650, [0, 8, -6, 0]);
   addContract("WholeValleyRecoveryContract", {
@@ -126,6 +171,8 @@ export function buildV4StageSevenScene(context) {
   grounded("B1BirdwatchSign", "Items/Decoration", "sign", b1meadow, 0.45, -3, {
     lines: `Array[String](["飞鸟是捷径，不是落脚要求。主路线只需跳跃与 Hover。"] )`
   });
+  addFlightRibbon("B1GoonieFlightArc", [[760, 135], [1120, 60], [1480, 95], [1840, 180]], "Color(0.38, 0.72, 1, 0.68)");
+  addFlightBadge("B1GoonieBadge", 1120, -35, "飞鸟 · 可选捷径", "Color(0.48, 0.82, 1, 0.94)");
   addContract("B1ObservationContract", {
     continuous_meadow: true,
     goonie_required: false,
@@ -230,6 +277,13 @@ export function buildV4StageSevenScene(context) {
     width: 300,
     height: 230
   });
+  grounded("B4RouteSign", "Items/Decoration", "sign", b4post, 0.28, -3, {
+    lines: `Array[String](["上方金线更短；下方绿线补水更多。高线失手会落到低线。"] )`
+  });
+  addFlightRibbon("B4HighRoutePreview", [[8720, 335], [9300, 130], [10030, 30]], "Color(1, 0.72, 0.24, 0.74)");
+  addFlightRibbon("B4LowRoutePreview", [[8720, 365], [9300, 390], [10280, 420]], "Color(0.32, 0.9, 0.62, 0.74)");
+  addFlightBadge("B4HighRouteBadge", 9180, 185, "高线 · 更短", "Color(1, 0.76, 0.34, 0.95)");
+  addFlightBadge("B4LowRouteBadge", 9320, 500, "低线 · 多补水", "Color(0.42, 0.9, 0.62, 0.95)");
   addContract("B4PostContract", {
     static_checkpoint: true,
     refill_pool_has_bed: true,
@@ -316,6 +370,11 @@ export function buildV4StageSevenScene(context) {
   });
   addRecoveryLift("B6RecoveryLiftA", 14100, 620, 340);
   addRecoveryLift("B6RecoveryLiftB", 15500, 620, 250);
+  addFlightBadge("B6StormWaveBadge1", 13720, -125, "迁徙波 1/3", "Color(0.5, 0.82, 1, 0.95)");
+  addFlightBadge("B6StormWaveBadge2", 14800, -205, "迁徙波 2/3", "Color(0.48, 0.76, 1, 0.95)");
+  addFlightBadge("B6StormWaveBadge3", 15880, -285, "迁徙波 3/3", "Color(0.46, 0.7, 1, 0.95)");
+  addLiftBeacon("B6RecoveryBeaconA", 14100, 340, "回收升降台");
+  addLiftBeacon("B6RecoveryBeaconB", 15500, 250, "回收升降台");
   addContract("B6StormContract", {
     wave_count: 3,
     moving_landing_width: 224,
@@ -370,6 +429,13 @@ export function buildV4StageSevenScene(context) {
   });
   addRecoveryLift("B7RecoveryLiftA", 17600, 620, -50);
   addRecoveryLift("B7RecoveryLiftB", 19600, 620, -390);
+  addFlightRibbon("B7RisingRouteRibbon", [
+    [16600, 150], [17320, 10], [18160, -150], [19000, -310], [19840, -470], [20580, -550]
+  ], "Color(0.6, 0.48, 1, 0.72)", 9);
+  addFlightBadge("B7StableClimbBadge", 17100, -130, "静态云梯 · 稳", "Color(0.64, 0.58, 1, 0.95)");
+  addFlightBadge("B7FastClimbBadge", 18700, -585, "弹簧飞鸟 · 快", "Color(1, 0.72, 0.3, 0.95)");
+  addLiftBeacon("B7RecoveryBeaconA", 17600, -50, "回收升降台");
+  addLiftBeacon("B7RecoveryBeaconB", 19600, -390, "回收升降台");
   addContract("B7RisingContract", {
     static_cloud_count: 9,
     maximum_upward_rise: 82,
@@ -403,6 +469,11 @@ export function buildV4StageSevenScene(context) {
       });
   }
   grounded("B8NestFlowers", "Items/Decoration", "flowers", b8finish, 0.65, -10);
+  addFlightRibbon("B8GiantNestRim", [
+    [20720, -560], [21440, -510], [21860, -430], [22270, -365],
+    [22700, -430], [23100, -500], [23520, -500]
+  ], "Color(0.72, 0.42, 0.16, 0.86)", 18);
+  addFlightBadge("B8GiantNestBadge", 22250, -590, "巨型鸟巢 · 三线汇流", "Color(1, 0.76, 0.34, 0.96)");
   addContract("B8NestContract", {
     static_nest_surface: true,
     route_convergence_count: 3,

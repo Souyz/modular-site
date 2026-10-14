@@ -2,6 +2,15 @@
 
 一个可部署到 Cloudflare Workers 的模块化网站骨架。静态前端由 Workers Static Assets 托管，`/api/*` 请求先进入 Worker，适合逐步加入仪表盘、表单、数据查询、AI 功能或后台管理能力。
 
+## 当前站点与维护入口
+
+- 正式网站：`https://neyc.de5.net`；管理后台：`/admin`。
+- GitHub 仓库：`larryllr/modular-site`，主分支 `main`。
+- Worker：`cloudflare-modular-site`；当前线上代码版本：`19cb5115-5ad9-41a6-990e-1ee96f3782dd`。
+- 2026-10-14 已按 Cloudflare 当前部署同步本地代码与 GitHub；网站内容独立保存在 KV `SITE_CONFIG` 和 D1 `GAME_DB`，不能用旧配置覆盖远端内容。
+- 新维护对话先读 [HANDOFF.md](HANDOFF.md)，再查看 `git status`、最近提交和 Cloudflare 当前部署。
+- 本机内容快照及备份位于 `Documents/Codex Website Backups/sync-20261014-website/`，受保护数据不进入公开仓库。
+
 ## 目录
 
 - `public/`：前端页面、样式和浏览器端功能模块。
@@ -17,6 +26,16 @@ npm install
 npm install --prefix vendor/cubecity --ignore-scripts --legacy-peer-deps --registry=https://registry.npmmirror.com
 npm run dev
 ```
+
+## 恢复本地内容快照
+
+远端网站内容导出不提交 GitHub。本机维护备份中的 `cloudflare/local-kv-import.json` 可用以下命令恢复到 `.wrangler/state/v3`，图片和 PCK 会按二进制保存并读回校验：
+
+```bash
+npm run sync:kv:local -- "备份目录/cloudflare/local-kv-import.json"
+```
+
+此工具只使用本地 bindings。恢复前备份已有 `.wrangler/state/v3`；D1 元数据另用 Wrangler 的 `d1 execute GAME_DB --local --file` 从本机 SQL 恢复。图片/PCK 不应使用当前 Wrangler 的 `kv bulk put --local` 导入，因为其 Base64 分支会转成文本。
 
 ## 内置游戏
 
@@ -38,7 +57,7 @@ npm run build:cubecity
 npm run deploy
 ```
 
-部署命令会先重建 CubeCity，再发布 Worker 和静态资源。
+部署命令会先执行 Godot 关卡补丁、审计、运行探针和 PCK 导出，然后重建站点 bundle 与 CubeCity，最后发布 Worker 和静态资源。Godot 4.3 可放在 `.codex-cache/godot-bin/`，也可用环境变量 `LLR_GODOT_BIN` 指定可执行文件。只同步已核验一致的线上版本时不必重复部署。
 
 第一次部署会打开 Cloudflare 登录授权。按浏览器提示登录后，Wrangler 会把 Worker 和静态文件发布到 Cloudflare。
 

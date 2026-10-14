@@ -59,7 +59,9 @@ export function buildV4StageEightScene(context) {
   const b = createV4SceneBuilder(context);
   const {
     vector,
+    packed,
     addInstance,
+    addPlainNode,
     addContract,
     addTerrain,
     grounded,
@@ -121,6 +123,61 @@ export function buildV4StageEightScene(context) {
     });
   }
 
+  function addClockDial(name, x, y, radius, label, color = "Color(0.76, 0.5, 0.16, 0.72)") {
+    const ring = [];
+    for (let index = 0; index <= 32; index += 1) {
+      const angle = (Math.PI * 2 * index) / 32;
+      ring.push([x + Math.cos(angle) * radius, y + Math.sin(angle) * radius]);
+    }
+    addPlainNode(`${name}Ring`, "Line2D", "Items/Decoration", {
+      z_index: "-2",
+      points: packed(ring),
+      width: "8",
+      default_color: color,
+      antialiased: "true",
+      "metadata/_llr_clock_landmark": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x - 72, y - radius - 42),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.24, 0.13, 0.04, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 0.96, 0.78, 0.95)",
+      "theme_override_constants/outline_size": "4",
+      "theme_override_font_sizes/font_size": "18"
+    });
+  }
+
+  function addClockBadge(name, x, y, label, color) {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x, y),
+      polygon: packed([[-78, -22], [78, -22], [86, 0], [78, 22], [-78, 22], [-86, 0]]),
+      color,
+      "metadata/_llr_functional_wayfinding": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x - 66, y - 17),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.1, 0.08, 0.05, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.9)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "18"
+    });
+  }
+
+  function addImpactZone(name, x, floorY, number) {
+    addPlainNode(`${name}Shadow`, "Polygon2D", "Items/Decoration", {
+      z_index: "2",
+      position: vector(x, floorY - 8),
+      polygon: packed([[-150, -18], [150, -18], [130, 18], [-130, 18]]),
+      color: "Color(0.86, 0.2, 0.12, 0.34)",
+      "metadata/_llr_safe_alcoves_both_sides": "true"
+    });
+    addClockBadge(`${name}Badge`, x, floorY - 92, `钟王第 ${number} 击`, "Color(1, 0.64, 0.28, 0.96)");
+  }
+
   // Continuous physical maintenance floor; no clock mechanism can trap the player above void.
   addGroundChain("ClockMaintenanceFloor", 1800, 24800, 650, [0, 8, -6, 0]);
   addContract("WholeClockRecoveryContract", {
@@ -135,6 +192,7 @@ export function buildV4StageEightScene(context) {
   const b1observe = addTerrain("B1ObservationDeck", 700, 240, 850, [0, 6, -6, 0]);
   const b1exit = addTerrain("B1ObservationExit", 1530, 240, 750, [0, -5, 5, 0]);
   addRotating("B1SingleSlowBlock", 1180, 120, { width: 400, wait: 120, interval: 90 });
+  addClockDial("B1ObservationDial", 1180, 120, 180, "观察完整周期", "Color(0.72, 0.48, 0.18, 0.66)");
   grounded("B1ClockSign", "Items/Decoration", "sign", b1observe, 0.45, -3, {
     lines: `Array[String](["先看完整一轮：钟块停稳后会给出很长的通过窗口。"] )`
   });
@@ -159,6 +217,8 @@ export function buildV4StageEightScene(context) {
   [4140, 4520].forEach((x, index) => addRotating(`B2LateWindow${index + 1}`, x, 180, {
     width: 360, wait: 100, timeOffset: 60, speed: -1
   }));
+  addClockBadge("B2EarlyWindowBadge", 2940, -55, "早窗口 · A 相", "Color(0.48, 0.82, 1, 0.95)");
+  addClockBadge("B2LateWindowBadge", 4330, -55, "晚窗口 · B 相", "Color(0.78, 0.62, 1, 0.95)");
   addRecoveryLift("B2MaintenanceLift", 4700, 230);
   addContract("B2WindowContract", {
     phase_group_count: 2,
@@ -188,6 +248,11 @@ export function buildV4StageEightScene(context) {
     timeOffset: (index % 3) * 35,
     speed: index % 2 ? -1 : 1
   })));
+  addClockBadge("B3CalibrationBadge", 5350, 105, "砸地 · 三相归零", "Color(1, 0.74, 0.28, 0.96)");
+  [[5900, "A 相"], [6740, "B 相"], [7580, "C 相"]].forEach(([x, label], index) => {
+    addClockBadge(`B3PhaseGroupBadge${index + 1}`, x, -105, label,
+      ["Color(0.42, 0.82, 1, 0.94)", "Color(0.74, 0.62, 1, 0.94)", "Color(1, 0.66, 0.34, 0.94)"][index]);
+  });
   addDirector("B3CalibrationDirector", 0, 0, {
     objectives: ["../Items/Mechanisms/B3CalibrationTarget"],
     waitForObjectives: true,
@@ -227,6 +292,8 @@ export function buildV4StageEightScene(context) {
     addRotating(`B4PhaseDisplay${index + 1}`, x, 110, {
       width: 220, wait: 180, timeOffset: index * 60, speed: 1
     });
+    addClockDial(`B4PhaseDial${index + 1}`, x, 110, 98, `${["A", "B", "C"][index]} 相刻度`,
+      ["Color(0.32, 0.72, 1, 0.7)", "Color(0.68, 0.52, 1, 0.7)", "Color(1, 0.58, 0.24, 0.7)"][index]);
   });
   airborne("B4ClockBottle", "Items/Pickups", "bottle", 9120, 180);
   addDirector("B4ClockRoomCheckpoint", 9200, 150, {
@@ -256,6 +323,10 @@ export function buildV4StageEightScene(context) {
     "metadata/_llr_end_bays": "true"
   }));
   addObjective("B5ReverseTarget", 12950, 226, "belt-reverse");
+  grounded("B5ReverseBeltSign", "Items/Decoration", "sign", b5floor[0], 0.26, -3, {
+    lines: `Array[String](["先顶住向左逆带；砸中开关后整组反向，沿原路短回程。"] )`
+  });
+  addClockBadge("B5BeltDirectionBadge", 11900, 120, "先 ← 逆行 · 后 → 回程", "Color(1, 0.7, 0.32, 0.96)");
   addDirector("B5ReverseDirector", 0, 0, {
     objectives: ["../Items/Mechanisms/B5ReverseTarget"],
     waitForObjectives: true,
@@ -288,6 +359,10 @@ export function buildV4StageEightScene(context) {
     travelSeconds: 3.2, pauseSeconds: 0.6, phase: 0.25, scaleX: 2.5, walkableWidth: 224
   });
   addRotating("B6CenterClockStep", 16500, -20, { width: 400, wait: 110, speed: -1 });
+  addClockDial("B6ClockFaceLandmark", 15700, 100, 560, "大钟面换乘环", "Color(0.82, 0.58, 0.2, 0.62)");
+  addClockBadge("B6OuterRingBadge", 14880, -210, "1 · 外环", "Color(0.42, 0.82, 1, 0.95)");
+  addClockBadge("B6RadialBadge", 15700, -110, "2 · 径向线", "Color(0.72, 0.62, 1, 0.95)");
+  addClockBadge("B6CenterBadge", 16500, -210, "3 · 中心梯", "Color(1, 0.68, 0.32, 0.95)");
   const b6exit = addTerrain("B6ClockFaceExit", 17020, 120, 520, [0, 0]);
   addCloud("B6OuterWait", 14550, 300, 15);
   addCloud("B6RadialWait", 15700, 300, 15);
@@ -321,6 +396,7 @@ export function buildV4StageEightScene(context) {
   ];
   strikes.forEach((strike, index) => {
     const number = index + 1;
+    addImpactZone(`B7ImpactZone${number}`, strike.x, 240, number);
     addObjective(`B7ClockKingTarget${number}`, strike.x, 226, "clock-king-impact");
     airborne(`B7ClockKingThwomp${number}`, "Items/Enemies", "thwomp", strike.x, -170, {
       attack_mode: "0",
@@ -367,6 +443,17 @@ export function buildV4StageEightScene(context) {
     bridgePaths.push(`../Items/Platforms/B8BellBridge${index + 1}`);
   }
   const b8finish = addTerrain("B8BellFinish", 24500, 120, 580, [0, -6, 0]);
+  addPlainNode("B8BellExitArch", "Line2D", "Items/Decoration", {
+    z_index: "-2",
+    points: packed([
+      [22120, 470], [22600, 250], [23250, 80], [23850, 250], [24430, 470]
+    ]),
+    width: "16",
+    default_color: "Color(1, 0.7, 0.2, 0.72)",
+    antialiased: "true",
+    "metadata/_llr_bell_exit_preview": "true"
+  });
+  addClockBadge("B8SynchronizedExitBadge", 23400, -40, "三击同步 · 离场", "Color(1, 0.76, 0.3, 0.96)");
   const allTargets = [1, 2, 3].map((index) => `../Items/Mechanisms/B7ClockKingTarget${index}`);
   addDirector("B8RaiseBellBridge", 0, 0, {
     objectives: allTargets,

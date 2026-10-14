@@ -102,7 +102,8 @@ export function buildV4StageNineScene(context) {
     let index = 1;
     while (x < endX) {
       const width = Math.min(850, endX - x);
-      ids.push(addTerrain(`${prefix}${index}`, x, y + (index % 2 ? 0 : 4), width, profile));
+      const pieceProfile = index % 2 ? profile : [...profile].reverse();
+      ids.push(addTerrain(`${prefix}${index}`, x, y, width, pieceProfile));
       if (x + width >= endX) break;
       x += width - 10;
       index += 1;
@@ -185,6 +186,73 @@ export function buildV4StageNineScene(context) {
       position: vector(x, y),
       polygon: packed([[0, -9], [7, -5], [9, 0], [7, 5], [0, 9], [-7, 5], [-9, 0], [-7, -5]]),
       color
+    });
+  }
+
+  function addWingPortalMarker(name, x, floorY, label, color) {
+    for (const [suffix, offsetX] of [["Left", -72], ["Right", 72]]) {
+      addPlainNode(`${name}${suffix}Pillar`, "Polygon2D", "Items/Decoration", {
+        z_index: "3",
+        position: vector(x + offsetX, floorY - 58),
+        polygon: packed([[-8, -58], [8, -58], [8, 58], [-8, 58]]),
+        color,
+        "metadata/_llr_hall_landmark": "true"
+      });
+    }
+    addPlainNode(`${name}Lintel`, "Polygon2D", "Items/Decoration", {
+      z_index: "3",
+      position: vector(x, floorY - 122),
+      polygon: packed([[-82, -8], [82, -8], [72, 8], [-72, 8]]),
+      color,
+      "metadata/_llr_hall_landmark": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "4",
+      position: vector(x - 64, floorY - 164),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(1, 0.96, 0.82, 1)",
+      "theme_override_colors/font_outline_color": "Color(0.12, 0.08, 0.05, 0.95)",
+      "theme_override_constants/outline_size": "4",
+      "theme_override_font_sizes/font_size": "17",
+      "metadata/_llr_hall_landmark": "true"
+    });
+  }
+
+  function addRouteChevron(name, x, y, direction, color, visible = true) {
+    addPlainNode(name, "Polygon2D", "Items/Decoration", {
+      z_index: "6",
+      position: vector(x, y),
+      polygon: packed([[direction * 20, 0], [-direction * 12, -13], [-direction * 4, 0], [-direction * 12, 13]]),
+      color,
+      visible: visible ? "true" : "false",
+      "metadata/_llr_reverse_route_marker": "true"
+    });
+    return `../Items/Decoration/${name}`;
+  }
+
+  function addRelicArch(name, x, floorY, width, height, color) {
+    for (const [suffix, offsetX] of [["Left", -width / 2], ["Right", width / 2]]) {
+      addPlainNode(`${name}${suffix}`, "Polygon2D", "Items/Decoration", {
+        z_index: "2",
+        position: vector(x + offsetX, floorY - height / 2),
+        polygon: packed([[-11, -height / 2], [11, -height / 2], [11, height / 2], [-11, height / 2]]),
+        color
+      });
+    }
+    addPlainNode(`${name}Top`, "Polygon2D", "Items/Decoration", {
+      z_index: "2",
+      position: vector(x, floorY - height),
+      polygon: packed([[-width / 2 - 12, -12], [width / 2 + 12, -12], [width / 2, 12], [-width / 2, 12]]),
+      color
+    });
+    addPlainNode(`${name}Title`, "Label", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x - 44, floorY - height - 42),
+      text: JSON.stringify("遗迹出口"),
+      "theme_override_colors/font_color": "Color(1, 0.87, 0.48, 1)",
+      "theme_override_colors/font_outline_color": "Color(0.12, 0.08, 0.04, 1)",
+      "theme_override_constants/outline_size": "4",
+      "theme_override_font_sizes/font_size": "20"
     });
   }
 
@@ -292,12 +360,22 @@ export function buildV4StageNineScene(context) {
     [0, 300], [100, 300], [100, 240], [180, 240], [180, 180], [260, 180],
     [260, 120], [340, 120], [340, 60], [420, 60], [420, 0], [560, 0]
   ], 520);
-  [5600, 5050, 4500, 3950, 3400, 2850, 2300, 1750].forEach((x, index) => {
-    addWood(`B3ReservoirRaft${index + 1}`, x, 225 + (index % 2) * 16, 7);
+  const reservoirRaftSpecs = [
+    [6060, 225, 12], [5600, 239, 11], [5150, 219, 12], [4690, 235, 13],
+    [4230, 221, 11], [3770, 240, 12], [3310, 224, 13], [2850, 238, 11],
+    [2390, 220, 12], [1930, 236, 11], [1470, 224, 12]
+  ];
+  const reservoirRafts = reservoirRaftSpecs.map(([x, y, width], index) =>
+    addWood(`B3ReservoirRaft${index + 1}`, x, y, width));
+  assertConservativePlatformChain("B3ReservoirFastRafts", [...reservoirRafts].sort((left, right) => left.x - right.x), {
+    maxGap: 96,
+    maxRise: 24,
+    minLandingWidth: 352
   });
   const waterDoorAnchor = surfacePoint(hallA, 0.84);
   addLocalWarp("B3HallWaterDoor", "door", waterDoorAnchor.x, waterDoorAnchor.y,
     6880, 202, "hall-to-water-wing");
+  addWingPortalMarker("B3WaterPortal", waterDoorAnchor.x, waterDoorAnchor.y, "西下 · 水库", "Color(0.18, 0.56, 0.86, 0.96)");
   const waterPipeAnchor = surfacePoint(waterFarShore, 0.36);
   addLocalWarp("B3WaterReturnPipe", "pipe", waterPipeAnchor.x, waterPipeAnchor.y - 16,
     8400, 182, "water-wing-return-hall");
@@ -317,9 +395,8 @@ export function buildV4StageNineScene(context) {
     { x: waterPipeAnchor.x, y: waterPipeAnchor.y - 18 }
   ], { coinLimit: 5 });
   recordRoute(stage.beats[2], "bonus", [
-    { x: 6200, y: 258 }, { x: 5600, y: 225 }, { x: 5050, y: 241 },
-    { x: 4500, y: 225 }, { x: 3950, y: 241 }, { x: 3400, y: 225 },
-    { x: 2850, y: 241 }, { x: 2300, y: 225 }, { x: 1750, y: 241 },
+    { x: 6200, y: 258 },
+    ...reservoirRaftSpecs.map(([x, y]) => ({ x, y })),
     { x: 1300, y: 258 }
   ], { coinLimit: 5 });
   recordRoute(stage.beats[2], "recovery", [
@@ -344,6 +421,7 @@ export function buildV4StageNineScene(context) {
   const bookDoorAnchor = surfacePoint(hallB, 0.2);
   addLocalWarp("B4HallBookshelfDoor", "door", bookDoorAnchor.x, bookDoorAnchor.y,
     7310, -278, "hall-to-bookshelf-wing");
+  addWingPortalMarker("B4BooksPortal", bookDoorAnchor.x, bookDoorAnchor.y, "西上 · 书架", "Color(0.78, 0.34, 0.2, 0.96)");
   const bookReturnAnchor = surfacePoint(bookFloors[0], 0.3);
   addLocalWarp("B4BookshelfReturnDoor", "door", bookReturnAnchor.x, bookReturnAnchor.y,
     8600, 182, "bookshelf-wing-return-hall");
@@ -376,25 +454,32 @@ export function buildV4StageNineScene(context) {
   const mushroomBasin = addGroundChain("B5MushroomBasin", 9680, 12620, 650, [0, 3, -3, 0]);
   const ascendingFungi = [];
   const risingSpecs = [
-    [9900, 540], [10080, 450], [10260, 360], [10440, 270], [10620, 180],
-    [10800, 90], [10980, 0], [11160, -90], [11340, -180], [11520, -270],
-    [11700, -360], [11880, -450]
+    [9900, 540, 5], [10070, 460, 5], [10240, 380, 6], [10410, 300, 5],
+    [10580, 220, 5], [10750, 140, 6], [10920, 60, 5], [11090, -20, 5],
+    [11260, -100, 6], [11430, -180, 5], [11600, -260, 5],
+    [11740, -340, 6], [11880, -420, 5]
   ];
-  risingSpecs.forEach(([x, y], index) => {
-    ascendingFungi.push(addFungus(`B5RisingFungus${index + 1}`, x, y, 150 + (index % 3) * 18, 4));
+  risingSpecs.forEach(([x, y, widthScale], index) => {
+    ascendingFungi.push(addFungus(`B5RisingFungus${index + 1}`, x, y, 150 + (index % 3) * 18, widthScale));
   });
   const descendingFungi = [];
   const descendingSpecs = [
-    [12060, -360], [12240, -270], [12420, -180], [12520, -90],
-    [12520, 20], [12480, 130], [12480, 240], [12440, 350], [12400, 460], [12360, 550]
+    [12050, -340, 6], [12210, -260, 5], [12350, -180, 5], [12470, -100, 6],
+    [12530, -20, 5], [12530, 70, 5], [12510, 160, 6], [12490, 250, 5],
+    [12470, 340, 5], [12440, 430, 6], [12400, 520, 5]
   ];
-  descendingSpecs.forEach(([x, y], index) => {
-    descendingFungi.push(addFungus(`B5DescendingFungus${index + 1}`, x, y, 145 + (index % 2) * 20, 4));
+  descendingSpecs.forEach(([x, y, widthScale], index) => {
+    descendingFungi.push(addFungus(`B5DescendingFungus${index + 1}`, x, y, 145 + (index % 2) * 20, widthScale));
   });
   assertConservativePlatformChain("B5AscendingFungusChain", ascendingFungi, {
     maxGap: 96,
-    maxRise: 92,
-    minLandingWidth: 224
+    maxRise: 82,
+    minLandingWidth: 280
+  });
+  assertConservativePlatformChain("B5DescendingFungusChain", descendingFungi, {
+    maxGap: 96,
+    maxRise: 24,
+    minLandingWidth: 280
   });
   grounded("B5BasinSpringWest", "Items/Mechanisms", "spring", mushroomBasin[0], 0.42, -8, {
     launch_speed: "10.4",
@@ -407,6 +492,7 @@ export function buildV4StageNineScene(context) {
   const mushroomPipeAnchor = surfacePoint(hallB, 0.58);
   addLocalWarp("B5HallMushroomPipe", "pipe", mushroomPipeAnchor.x, mushroomPipeAnchor.y - 16,
     9840, 592, "hall-to-mushroom-wing");
+  addWingPortalMarker("B5MushroomPortal", mushroomPipeAnchor.x, mushroomPipeAnchor.y, "东上 · 菌塔", "Color(0.83, 0.28, 0.62, 0.96)");
   addLocalWarp("B5MushroomReturnPipe", "pipe", 12390, 634,
     8800, 182, "mushroom-wing-return-hall");
   addRedCoin("B5MushroomWingRedCoin", 11880, -520, "mushroom");
@@ -418,14 +504,10 @@ export function buildV4StageNineScene(context) {
     separate_descent_side: true
   });
   recordMain(stage.beats[4], [
-    { x: 9840, y: 592 }, { x: 9900, y: 540 }, { x: 10080, y: 450 },
-    { x: 10260, y: 360 }, { x: 10440, y: 270 }, { x: 10620, y: 180 },
-    { x: 10800, y: 90 }, { x: 10980, y: 0 }, { x: 11160, y: -90 },
-    { x: 11340, y: -180 }, { x: 11520, y: -270 }, { x: 11700, y: -360 },
-    { x: 11880, y: -450 }, { x: 12060, y: -360 }, { x: 12240, y: -270 },
-    { x: 12420, y: -180 }, { x: 12520, y: -90 }, { x: 12520, y: 20 },
-    { x: 12480, y: 130 }, { x: 12480, y: 240 }, { x: 12440, y: 350 },
-    { x: 12400, y: 460 }, { x: 12360, y: 550 }, { x: 12390, y: 620 }
+    { x: 9840, y: 592 },
+    ...risingSpecs.map(([x, y]) => ({ x, y })),
+    ...descendingSpecs.map(([x, y]) => ({ x, y })),
+    { x: 12390, y: 620 }
   ], { coinLimit: 6 });
   recordRoute(stage.beats[4], "recovery", [
     { x: 9840, y: 620 }, { x: 10300, y: 620 }, { x: 10800, y: 620 },
@@ -443,13 +525,13 @@ export function buildV4StageNineScene(context) {
 
   const mechanicalShuttles = [
     addShuttle("B6MechanicalShuttleA", 13480, 240, { x: 360, y: -20 }, {
-      travelSeconds: 3.0, pauseSeconds: 0.55, phase: 0.1, scaleX: 2.5, walkableWidth: 224
+      travelSeconds: 3.0, pauseSeconds: 0.55, phase: 0.1, scaleX: 3.0, walkableWidth: 288
     }),
     addShuttle("B6MechanicalShuttleB", 14680, 200, { x: 420, y: -100 }, {
-      travelSeconds: 3.2, pauseSeconds: 0.55, phase: 0.45, scaleX: 2.5, walkableWidth: 224
+      travelSeconds: 3.2, pauseSeconds: 0.55, phase: 0.45, scaleX: 3.0, walkableWidth: 288
     }),
     addShuttle("B6MechanicalShuttleC", 15800, 100, { x: 520, y: 140 }, {
-      travelSeconds: 3.4, pauseSeconds: 0.6, phase: 0.72, scaleX: 2.5, walkableWidth: 224
+      travelSeconds: 3.4, pauseSeconds: 0.6, phase: 0.72, scaleX: 3.0, walkableWidth: 288
     })
   ];
   airborne("B6ReverseBeltA", "Items/Mechanisms", "conveyor", 14240, 208, {
@@ -483,29 +565,31 @@ export function buildV4StageNineScene(context) {
       travelSeconds: 3.0 + index * 0.2,
       pauseSeconds: 0.55,
       phase: index * 0.3,
-      scaleX: 2.5,
-      walkableWidth: 224
+      scaleX: 2.75,
+      walkableWidth: 240
     });
-    addCloud(`B6MaintenanceWait${index + 1}`, x - 220, 600, 12);
+    addCloud(`B6MaintenanceWait${index + 1}`, x - 220, 600, 15);
   });
   addShuttle("B6MaintenanceExitLift", 17380, 620, { x: 0, y: -380 }, {
     travelSeconds: 3.2,
     pauseSeconds: 0.55,
     phase: 0.55,
-    scaleX: 2.5,
-    walkableWidth: 224
+    scaleX: 2.75,
+    walkableWidth: 240
   });
-  addCloud("B6MaintenanceExitWait", 17140, 600, 12);
+  addCloud("B6MaintenanceExitWait", 17140, 600, 15);
   const mechanicalDoorAnchor = surfacePoint(hallC, 0.32);
   addLocalWarp("B6HallMechanicalDoor", "door", mechanicalDoorAnchor.x, mechanicalDoorAnchor.y,
     12940, 202, "hall-to-mechanical-wing");
+  addWingPortalMarker("B6MechanicalPortal", mechanicalDoorAnchor.x, mechanicalDoorAnchor.y, "东下 · 机械", "Color(0.82, 0.66, 0.16, 0.96)");
   const mechanicalReturnAnchor = surfacePoint(mechanicalFarB, 0.58);
   addLocalWarp("B6MechanicalReturnDoor", "door", mechanicalReturnAnchor.x, mechanicalReturnAnchor.y,
     9000, 182, "mechanical-wing-return-hall");
   markRecoveryWing("MechanicalWing", {
     continuous_maintenance_floor: true,
     recovery_lifts: 4,
-    moving_landing_width: 224,
+    moving_landing_width: 288,
+    recovery_landing_width: 240,
     required_red_coins: 1,
     optional_red_coins: 1
   });
@@ -549,11 +633,23 @@ export function buildV4StageNineScene(context) {
   const reverseExitDoor = addParkedLocalWarp("B7BooksReverseExitDoor", "door",
     bookExitDoorDesired.x, bookExitDoorDesired.y, 17740, 182,
     "reverse-bookshelf-to-exit-foyer");
+  airborne("B7ReverseDoorArrow", "Items/Decoration", "arrow", 10880, 166, {
+    rotation: "-1.5708",
+    visible: "false"
+  });
+  const reverseRouteMarkers = [
+    `../Items/Decoration/B7ReverseDoorArrow`,
+    addRouteChevron("B7MechanicalReverseChevron", 17040, 150, -1, "Color(1, 0.76, 0.18, 1)", false),
+    addRouteChevron("B7RelayReverseChevron", 13020, 150, -1, "Color(1, 0.76, 0.18, 1)", false),
+    addRouteChevron("B7BooksReverseChevron", 4580, -300, 1, "Color(1, 0.76, 0.18, 1)", false),
+    addRouteChevron("B7BooksExitChevron", 7240, -300, 1, "Color(1, 0.76, 0.18, 1)", false)
+  ];
   addDirector("B7DeployReverseExitDirector", 10580, 120, {
     move: [
       `../Items/Mechanisms/${reverseRelayPipe}`,
       `../Items/Mechanisms/${reverseExitDoor}`
     ],
+    reveal: reverseRouteMarkers,
     moveOffset: { x: -20000, y: 0 },
     moveSeconds: 0.12,
     announcement: "遗迹机关反向：逆走机械环，再逆走书架环",
@@ -561,8 +657,8 @@ export function buildV4StageNineScene(context) {
     width: 260,
     height: 240
   });
-  airborne("B7ReverseDoorArrow", "Items/Decoration", "arrow", 10880, 166, {
-    rotation: "-1.5708"
+  grounded("B7ReverseRouteSign", "Items/Decoration", "sign", hallGateFloor, 0.68, -3, {
+    lines: `Array[String](["红门开启后，金色箭头只指向出口中继。", "先逆走机械环，再逆走书架环；下层维修路仍可回收。"] )`
   });
   addContract("B7GateDeploymentContract", {
     protected_by_only_coin_gate: true,
@@ -611,6 +707,9 @@ export function buildV4StageNineScene(context) {
   grounded("B8MainExitSign", "Items/Decoration", "sign", exitFloorA, 0.18, -3, {
     lines: `Array[String](["直走就是主出口。上方宝库只放奖励，不需要红币，也不影响通关。"] )`
   });
+  addRelicArch("B8ExitArch", 18780, 240, 250, 184, "Color(0.5, 0.34, 0.16, 0.96)");
+  grounded("B8ExitFlowersLeft", "Items/Decoration", "flowers", exitFloorB, 0.48, -10);
+  grounded("B8ExitFlowersRight", "Items/Decoration", "flowers", exitFloorB, 0.78, -10);
   addContract("B8OptionalVaultContract", {
     static_main_exit: true,
     vault_optional: true,
@@ -656,7 +755,7 @@ export function buildV4StageNineScene(context) {
   if (!negativeRouteBeats.has(2) || !negativeRouteBeats.has(3) || !negativeRouteBeats.has(4) || !negativeRouteBeats.has(7)) {
     throw new Error("V4 stage 9 must record the real westward and reverse routes with negative dx");
   }
-  if (mechanicalShuttles.some((platform) => platform.walkableWidth < 224)
+  if (mechanicalShuttles.some((platform) => platform.walkableWidth < 288)
     || expertPlatforms.some((platform) => platform.walkableWidth < 210)) {
     throw new Error("V4 stage 9 mechanical moving landings became too narrow");
   }

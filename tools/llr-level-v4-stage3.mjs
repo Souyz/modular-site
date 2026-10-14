@@ -100,6 +100,7 @@ export function buildV4StageThreeScene(context) {
     vector,
     packed,
     addInstance,
+    addPlainNode,
     addContract,
     addTerrain,
     addTerrainPolygon,
@@ -110,6 +111,7 @@ export function buildV4StageThreeScene(context) {
     addCloud,
     addWood,
     addDirector,
+    assertConservativePlatformChain,
     finalize
   } = b;
 
@@ -119,7 +121,8 @@ export function buildV4StageThreeScene(context) {
     let index = 1;
     while (x < endX) {
       const width = Math.min(850, endX - x);
-      surfaces.push(addTerrain(`${prefix}${index}`, x, y + (index % 2 ? 0 : 4), width, profile));
+      // Keep neighboring collision tops flush; the profile itself supplies the silhouette.
+      surfaces.push(addTerrain(`${prefix}${index}`, x, y, width, profile));
       if (x + width >= endX) break;
       x += width - 10;
       index += 1;
@@ -135,12 +138,44 @@ export function buildV4StageThreeScene(context) {
     });
   }
 
-  function addBoxStack(prefix, x, floorY, columns, rows, spacing = 34) {
+  function addBoxStack(prefix, x, floorY, columns, rows, spacing = 34, options = {}) {
     for (let column = 0; column < columns; column += 1) {
       for (let row = 0; row < rows; row += 1) {
-        addBox(`${prefix}C${column + 1}R${row + 1}`, x + column * spacing, floorY - 17 - row * spacing);
+        addBox(`${prefix}C${column + 1}R${row + 1}`, x + column * spacing, floorY - 17 - row * spacing, {
+          coin_count: options.rewardTop && row === rows - 1 ? String(options.rewardTop) : "0"
+        });
       }
     }
+  }
+
+  function addFloorMark(name, x, y, width, color = "Color(1, 0.72, 0.16, 0.72)") {
+    addPlainNode(name, "Polygon2D", "Items/Decoration", {
+      z_index: "2",
+      position: vector(x, y),
+      polygon: packed([[-width / 2, -7], [width / 2, -7], [width / 2, 7], [-width / 2, 7]]),
+      color,
+      "metadata/_llr_floor_readability_mark": "true",
+      "metadata/_llr_visual_only": "true"
+    });
+  }
+
+  function addZoneBadge(name, x, y, label, color = "Color(1, 0.68, 0.16, 0.94)") {
+    addPlainNode(`${name}Plate`, "Polygon2D", "Items/Decoration", {
+      z_index: "4",
+      position: vector(x, y),
+      polygon: packed([[-72, -22], [72, -22], [72, 22], [-72, 22]]),
+      color,
+      "metadata/_llr_visual_only": "true"
+    });
+    addPlainNode(`${name}Label`, "Label", "Items/Decoration", {
+      z_index: "5",
+      position: vector(x - 58, y - 16),
+      text: JSON.stringify(label),
+      "theme_override_colors/font_color": "Color(0.1, 0.12, 0.16, 1)",
+      "theme_override_colors/font_outline_color": "Color(1, 1, 1, 0.85)",
+      "theme_override_constants/outline_size": "3",
+      "theme_override_font_sizes/font_size": "17"
+    });
   }
 
   function addObjective(name, x, y, metadata = {}) {
@@ -168,7 +203,16 @@ export function buildV4StageThreeScene(context) {
   const b1start = addTerrain("B1TrainingStart", -40, 240, 760, [0, -8, 6, 0]);
   const b1middle = addTerrain("B1PreviewMiddle", 700, 240, 780, [0, 6, -6, 0]);
   const b1exit = addTerrain("B1PreviewExit", 1460, 235, 780, [0, -5, 5, 0]);
-  addBoxStack("B1PreviewWall", 1540, 235, 3, 4);
+  addBoxStack("B1PreviewWall", 1540, 235, 3, 3);
+  addPlainNode("B1BlockedExitFrame", "Line2D", "Items/Decoration", {
+    z_index: "0",
+    points: packed([[1500, 232], [1500, 92], [1645, 92], [1645, 232]]),
+    width: "10",
+    default_color: "Color(0.24, 0.28, 0.34, 0.86)",
+    antialiased: "true",
+    "metadata/_llr_preview_landmark": "true"
+  });
+  addZoneBadge("B1BlockedExitBadge", 1580, 62, "封锁出口", "Color(1, 0.46, 0.14, 0.94)");
   grounded("B1PreviewFenceSign", "Items/Decoration", "sign", b1middle, 0.48, -3, {
     lines: `Array[String](["箱墙可以旋转或砸地拆除；爆弹只会制造压力，不负责替你开门。"] )`
   });
@@ -186,12 +230,18 @@ export function buildV4StageThreeScene(context) {
 
   // Beat 2: multiple box lanes, all with permanent floor and a visible bypass.
   const b2grounds = addGroundChain("B2BreakYard", 2200, 4700, 240);
-  addBoxStack("B2LaneA", 2730, 240, 2, 3);
-  addBoxStack("B2LaneB", 3350, 240, 3, 2);
-  addBoxStack("B2LaneC", 4020, 240, 2, 4);
+  addBoxStack("B2LaneA", 2730, 240, 2, 2, 34, { rewardTop: 1 });
+  addBoxStack("B2LaneB", 3350, 240, 3, 2, 34, { rewardTop: 1 });
+  addBoxStack("B2LaneC", 4020, 240, 2, 3, 34, { rewardTop: 1 });
+  addFloorMark("B2PracticePadA", 2750, 232, 220, "Color(0.25, 0.72, 1, 0.72)");
+  addFloorMark("B2PracticePadB", 3380, 232, 250, "Color(1, 0.72, 0.18, 0.72)");
+  addFloorMark("B2PracticePadC", 4040, 232, 220, "Color(0.38, 0.88, 0.5, 0.72)");
   addCloud("B2BypassCloudA", 2940, 128, 10);
   addCloud("B2BypassCloudB", 3630, 122, 10);
   airborne("B2PracticeBottle", "Items/Pickups", "bottle", 3720, 190);
+  grounded("B2PracticeSign", "Items/Decoration", "sign", b2grounds[0], 0.22, -3, {
+    lines: `Array[String](["彩色地坪是安全拆箱位；不想拆时，头顶云台可直接绕过。"] )`
+  });
   addContract("B2BreakTrainingContract", {
     box_lanes: 3,
     spin_or_pound: true,
@@ -214,20 +264,51 @@ export function buildV4StageThreeScene(context) {
   const b3floor = addGroundChain("B3WarehouseFloor", 5070, 7800, 360);
   addTerrainPolygon("B3WarehouseUpStairs", 7660, 240, upStairs(3, 90, 40, 100), 400);
   const b3exit = addTerrain("B3WarehouseExit", 8030, 240, 190, [0, 0]);
-  const midA = addTerrain("B3MidShelfA", 5200, 165, 720, [0, 0, 6, 0]);
-  const midB = addTerrain("B3MidShelfB", 6100, 150, 760, [0, -6, 4, 0]);
-  const midC = addTerrain("B3MidShelfC", 7040, 170, 620, [0, 5, -4, 0]);
-  addWood("B3RoofRampA", 5380, 55, 6);
-  addWood("B3RoofRampB", 5740, 20, 6);
-  addWood("B3RoofRampC", 6120, 10, 6);
-  addWood("B3RoofRampD", 6500, 40, 6);
-  addWood("B3RoofRampE", 6880, 20, 6);
-  addWood("B3RoofRampF", 7260, 60, 6);
-  addBoxStack("B3FloorBoxesA", 5640, 360, 2, 2);
-  addBoxStack("B3FloorBoxesB", 6740, 360, 2, 3);
+  const midA = addTerrain("B3MidShelfA", 5200, 165, 900, [0, -6, -10, -15]);
+  const midB = addTerrain("B3MidShelfB", 6100, 150, 900, [0, -6, 6, 20]);
+  const midC = addTerrain("B3MidShelfC", 7000, 170, 660, [0, 5, -4, 0]);
+  const b3roof = [
+    addWood("B3RoofRampA", 5380, 55, 10),
+    addWood("B3RoofRampB", 5750, 20, 10),
+    addWood("B3RoofRampC", 6130, 5, 11),
+    addWood("B3RoofRampD", 6510, 28, 10),
+    addWood("B3RoofRampE", 6890, 10, 11),
+    addWood("B3RoofRampF", 7290, 60, 10)
+  ];
+  assertConservativePlatformChain("B3ReadableRoofLine", b3roof, {
+    maxGap: 82,
+    maxRise: 48,
+    minLandingWidth: 224
+  });
+  addBoxStack("B3FloorBoxesA", 5640, 360, 2, 2, 34, { rewardTop: 1 });
+  addBoxStack("B3FloorBoxesB", 6740, 360, 2, 2, 34, { rewardTop: 1 });
   grounded("B3MidBoxA", "Items/Mechanisms", "box", midA, 0.58, -17, { coin_count: "1", persistent_destroy: "true" });
   grounded("B3MidBoxB", "Items/Mechanisms", "box", midB, 0.48, -17, { coin_count: "1", persistent_destroy: "true" });
   grounded("B3MidBoxC", "Items/Mechanisms", "box", midC, 0.54, -17, { coin_count: "1", persistent_destroy: "true" });
+  addPlainNode("B3GroundRoutePaint", "Line2D", "Items/Decoration", {
+    z_index: "2",
+    points: packed([[4920, 352], [7600, 352]]),
+    width: "7",
+    default_color: "Color(0.34, 0.82, 0.5, 0.72)",
+    antialiased: "true"
+  });
+  addPlainNode("B3MiddleRoutePaint", "Line2D", "Items/Decoration", {
+    z_index: "2",
+    points: packed([[5200, 154], [6100, 140], [7000, 160], [7640, 160]]),
+    width: "7",
+    default_color: "Color(1, 0.72, 0.18, 0.75)",
+    antialiased: "true"
+  });
+  addPlainNode("B3RoofRoutePaint", "Line2D", "Items/Decoration", {
+    z_index: "0",
+    points: packed([[5260, 92], [5985, -32], [6620, -30], [7410, 90]]),
+    width: "6",
+    default_color: "Color(0.25, 0.7, 1, 0.72)",
+    antialiased: "true"
+  });
+  airborne("B3RoofReward", "Items/Pickups", "blueCoin", 6890, -42, {
+    "metadata/_llr_safe_optional_reward": "true"
+  });
   addContract("B3WarehouseContract", {
     route_count: 3,
     continuous_lower_floor: true,
@@ -245,8 +326,9 @@ export function buildV4StageThreeScene(context) {
     { x: 7200, y: 345 }, { x: 7720, y: 330 }, { x: 8000, y: 245 }
   ], { recoverySeconds: 10, coinLimit: 4 });
   recordRoute(stage.beats[2], "bonus", [
-    { x: 5000, y: 230 }, { x: 5300, y: 160 }, { x: 5600, y: 55 },
-    { x: 6120, y: 10 }, { x: 6600, y: 40 }, { x: 7100, y: 30 },
+    { x: 5000, y: 230 }, { x: 5300, y: 160 }, { x: 5380, y: 55 },
+    { x: 5750, y: 20 }, { x: 6130, y: 5 }, { x: 6510, y: 28 },
+    { x: 6890, y: 10 }, { x: 7290, y: 60 },
     { x: 7500, y: 160 }, { x: 7900, y: 240 }
   ], { coinLimit: 6 });
 
@@ -256,6 +338,8 @@ export function buildV4StageThreeScene(context) {
   const b4target = addObjective("B4CollapseTarget", 8840, 146, {
     "metadata/_llr_objective_role": JSON.stringify("support")
   });
+  addFloorMark("B4SupportTargetMark", 8840, 148, 210, "Color(1, 0.36, 0.18, 0.82)");
+  addZoneBadge("B4CollapseBadge", 8840, 45, "支撑点", "Color(1, 0.5, 0.16, 0.96)");
   addTerrain("B4OldSupportGate", 9080, -20, 110, [0, 0], 200);
   addTerrainPolygon("B4NewCollapseSlope", 9140, 580,
     [[0, 0], [160, -40], [320, -80], [480, -120], [640, -160], [860, -200]], 220);
@@ -280,8 +364,10 @@ export function buildV4StageThreeScene(context) {
   // Beat 5: short reverse belts separated by wide static sorting bays.
   const b5grounds = addGroundChain("B5SortingFloor", 10000, 13800, 20, [0, 4, -4, 0]);
   const conveyorSpecs = [
-    [10420, -2, 280, -85], [11140, 2, 320, -105], [11920, -2, 288, -90],
-    [12700, 2, 320, -110], [13420, -2, 248, -80]
+    [10420, -2, 320, -82],
+    [11300, 2, 400, -105],
+    [12320, -2, 336, -90],
+    [13300, 2, 420, -112]
   ];
   conveyorSpecs.forEach(([x, y, width, speed], index) => {
     airborne(`B5ReverseBelt${index + 1}`, "Items/Mechanisms", "conveyor", x, y, {
@@ -289,17 +375,29 @@ export function buildV4StageThreeScene(context) {
       speed: String(speed),
       "metadata/_llr_static_bay_after": "true"
     });
+    airborne(`B5BeltDirectionArrow${index + 1}`, "Items/Decoration", "arrow", x + width * 0.42, y - 54, {
+      rotation: speed < 0 ? "3.14159" : "0",
+      modulate: "Color(1, 0.72, 0.18, 0.9)",
+      "metadata/_llr_visual_only": "true"
+    });
   });
-  addBoxStack("B5SortBoxesA", 10820, 20, 2, 2);
-  addBoxStack("B5SortBoxesB", 12300, 20, 3, 2);
-  addBoxStack("B5SortBoxesC", 13120, 20, 2, 3);
+  addBoxStack("B5SortBoxesA", 10820, 20, 2, 2, 34, { rewardTop: 1 });
+  addBoxStack("B5SortBoxesB", 11840, 20, 2, 2, 34, { rewardTop: 1 });
+  addBoxStack("B5SortBoxesC", 12880, 20, 2, 2, 34, { rewardTop: 1 });
+  [10820, 11840, 12880, 13620].forEach((x, index) => {
+    addFloorMark(`B5StaticSortingBay${index + 1}`, x, 12, index === 3 ? 280 : 240,
+      index % 2 ? "Color(0.25, 0.72, 1, 0.68)" : "Color(1, 0.72, 0.18, 0.68)");
+  });
+  grounded("B5SortingSign", "Items/Decoration", "sign", b5grounds[0], 0.18, -3, {
+    lines: `Array[String](["箭头标出逆带方向；只在彩色停车区拆箱，带尾始终有完整地面。"] )`
+  });
   grounded("B5OptionalBobomb", "Items/Enemies", "bobomb", b5grounds[2], 0.68, -16, {
     "metadata/_llr_optional_pressure": "true"
   });
   airborne("B5SortingBottle", "Items/Pickups", "bottle", 12500, -35);
   addContract("B5SortingContract", {
-    conveyor_count: 5,
-    static_parking_bays: 6,
+    conveyor_count: 4,
+    static_parking_bays: 5,
     end_stoppers: true,
     bobomb_required: false,
     void_required: false

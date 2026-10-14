@@ -1,10 +1,10 @@
+import { resolveGodot } from "./resolve-godot.mjs";
 import { copyFileSync, existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
 
 const root = process.cwd();
-const godot = join(process.env.TEMP || tmpdir(), "godot-4.3-tools", "godot", "Godot_v4.3-stable_win64_console.exe");
+const godot = resolveGodot(root);
 const project = join(root, "vendor", "Legacy_SM63Redux");
 const testScript = join(root, "tools", "llr-godot-serializer-test.gd");
 const runtimeScript = join(project, "zz_codex_llr_serializer_test.gd");

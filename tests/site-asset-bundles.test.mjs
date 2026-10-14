@@ -31,8 +31,10 @@ test("public and admin pages load separate hashed bundles", () => {
   assert.match(index, /site-assets\/admin\/app-[A-Z0-9]+\.js/);
   assert.match(index, /site-assets\/styles-[a-f0-9]+\.css/);
   assert.match(headers, /\/site-assets\/\*[\s\S]*?max-age=31536000, immutable/);
+  assert.doesNotMatch(headers.match(/(?:^|\r?\n)\/\*\r?\n([\s\S]*)$/)?.[1] || "", /Cache-Control:/i);
+  assert.equal(headers.match(/X-Content-Type-Options:/g)?.length, 1);
   assert.match(worker, /pathname\.startsWith\("\/site-assets\/"\)/);
-  assert.match(wrangler, /"\/site-assets\/\*"/);
+  assert.doesNotMatch(wrangler, /"\/site-assets\/\*"/);
   assert.match(publicEntry, /startPublicApp/);
   assert.match(adminEntry, /startAdminApp/);
   assert.ok(publicBundle.names.some((name) => /^app-[A-Z0-9]+\.js$/.test(name)));

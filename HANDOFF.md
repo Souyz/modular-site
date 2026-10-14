@@ -1,6 +1,21 @@
 # 项目交接说明
 
-更新时间：2026-07-15
+更新时间：2026-10-14
+
+## 当前维护基线（2026-10-14）
+
+- 本轮以 Cloudflare 正式域名 `neyc.de5.net` 当前部署为准，恢复此前已发布但未提交 GitHub 的改动。同步前 GitHub `main` 为 `e22a004aa63001ca7104d21c083387b34fc00171`，提交时间为 2026-07-22。
+- 本地 TypeScript 经 Wrangler 构建后的 Worker 与下载的线上 `index.js` 完全一致；SHA-256 为 `8c56ff88384b580b14c49d54091719b3f9f51c30785333660de79848f0f160e9`。
+- 123 个可访问静态文件已全部核验一致：115 个直接比较完整字节，8 个大文件按 Wrangler 的 BLAKE3 资源算法核对线上 ETag。首页、后台入口、全部站点 bundle、CubeCity 和 Godot PCK/WASM 均在核验范围内。
+- 当前前端入口：`/site-assets/public/app-7BKLKR3I.js`；后台入口：`/site-assets/admin/app-NU5IKGOT.js`；样式：`/site-assets/styles-a8f3fa22e494.css`。`npm test` 重新构建后仍生成这三个相同文件。
+- 代码部署时间与网站内容更新时间不同。远端 KV 的 `site-config.updatedAt` 为 `2026-10-04T13:52:34.142Z`（北京时间 2026-10-04 21:52:34），包含目前的宽 API、宽 TV、邮箱及 SSH 等入口；内容以远端 KV/D1 为准。
+- 默认 Godot PCK 为 9,854,976 bytes，版本前缀 `1496118adb893fd0`。默认素材包仍为 `original`，另外保留 `liushuo` 和 `guoliang`；D1 关卡元数据共 10 项。
+- 检查结果：55/55 Node 测试、TypeScript 检查、十关 Godot 运行探针均通过。线上桌面首页、博客列表、管理员登录入口和 Godot 游戏启动已用真实浏览器检查。
+- 维护工具不再只依赖 `%TEMP%` 下的 Godot。`tools/resolve-godot.mjs` 优先使用 `LLR_GODOT_BIN`，其次使用 `.codex-cache/godot-bin/Godot_v4.3-stable_win64_console.exe`，最后兼容原临时目录。四个 Godot 测试/导出脚本共用此解析器。
+- 本轮备份目录：`C:\Users\宽宽\Documents\Codex Website Backups\sync-20261014-website`，包含同步前 Git 二进制补丁、修改文件、原本地 KV/D1、线上 Worker/静态资源、远端 KV 内容和 D1 SQL。配置可能含受保护页面的数据，备份只保存在本机，不提交公开仓库。
+- 已完整备份并同步 77 项 KV 配置/素材（39,305,016 bytes）以及 D1 元数据到本地开发状态。当前网站配置和游戏清单与线上相同；图片/PCK 按原始字节保存并逐项读回验证。`tools/import-local-kv.mjs` 通过 Wrangler 本地 bindings 导入，`remoteBindings: false`，不会连接远端。当前 Wrangler 的 `kv bulk put --local` 会把 Base64 二进制转成 UTF-8 文本，因此不要用它恢复图片或游戏包。
+- `.codex-cache/`、`.playwright-cli/`、`output/`、`.wrangler/` 及开发变量均应保持 Git 忽略。
+- 已证实代码和静态资源一致的版本同步不需要再次部署 Cloudflare；功能或静态资源修改才执行下述完整发布流程。每次发布后将 Version ID 与 Git 提交一起记录，避免再次出现只有线上更新、GitHub 未同步。
 
 ## 新对话启动语
 
@@ -16,7 +31,7 @@
 - Worker 预览地址：`https://cloudflare-modular-site.2089151168.workers.dev`
 - 当前分支：`main`
 - 最新提交：以 `git log -1 --oneline` 为准
-- 最新 Cloudflare Version ID：`0d9d3df5-02b5-4770-b243-d15049e62844`
+- 当前正式 Cloudflare Version ID：`19cb5115-5ad9-41a6-990e-1ee96f3782dd`（2026-08-01 19:04:58 北京时间部署，100% 流量）
 - 管理后台：`/admin`
 - 默认完整管理员密码：`admin`
 - 网站配置与内容主要保存在 Cloudflare KV `SITE_CONFIG`
@@ -156,7 +171,7 @@ npm install --prefix vendor/cubecity --ignore-scripts --legacy-peer-deps --regis
 
 ## 当前工作区状态
 
-`/llr-mariorun` 黑屏恢复、退出全屏自动重建 iframe、移动端工具栏压缩，以及每日自动背景真正后加载已部署到 Cloudflare；完成提交和推送后工作区除本地浏览器 QA 目录外应保持干净。
+2026-10-14 已恢复线上最新代码与完整静态资源基线，并补齐 GitHub。开发缓存、浏览器验收产物和本地数据保留在被忽略目录；日常维护从本文顶部的当前基线和实际 `git status` 开始，下面的历史记录仅用于追溯。
 
 ## 2026-06-25 老师动作表素材包更新
 
