@@ -127,7 +127,7 @@ type BlogArticle = {
   coverImage: string;
   category: string;
   tags: string[];
-  authorRole: "admin" | "limited";
+  authorRole: "admin" | "limited" | "public";
   authorName: string;
   createdAt: string;
   updatedAt: string;
@@ -678,6 +678,14 @@ const serverModules: ServerModule[] = [
     endpoints: ["/api/comments", "/api/admin/comments"]
   },
   {
+    id: "blog-publishing",
+    name: "公开博客投稿",
+    category: "community",
+    status: "active",
+    description: "访客无需登录即可发布文章，管理员可以删除文章。",
+    endpoints: ["/api/blog/articles", "/api/admin/blog/articles"]
+  },
+  {
     id: "access-logs",
     name: "访问日志",
     category: "admin",
@@ -774,6 +782,9 @@ const apiRoutes: Record<string, ApiRoute> = {
     conditionalJson(request, {
       config: toPublicSiteConfig(await readPublicSiteConfig(env), request)
     }),
+
+  "/api/blog/articles": handlePublicBlogArticleCreate,
+  "/api/admin/blog/articles": handleAdminBlogArticleDelete,
 
   "/api/game/manifest": fetchGameManifest,
   "/api/admin/game": handleAdminGame,
@@ -1716,11 +1727,15 @@ function mergeLimitedBlogSection(existing: BlogSection, requested: BlogSection):
       const saved = existingArticles.get(article.id);
       return !saved || saved.authorRole !== "admin";
     })
-    .map((article) => ({
-      ...article,
-      authorRole: "limited" as const,
-      authorName: article.authorName || "limited"
-    }));
+    .map((article) => {
+      const saved = existingArticles.get(article.id);
+      const authorRole = saved?.authorRole === "public" ? "public" as const : "limited" as const;
+      return {
+        ...article,
+        authorRole,
+        authorName: article.authorName || saved?.authorName || (authorRole === "public" ? "匿名" : "limited")
+      };
+    });
 
   for (const article of existing.articles) {
     if (article.authorRole === "admin" && !requestedIds.has(article.id)) {
@@ -2050,12 +2065,190 @@ function normalizeBlogArticles(value: unknown): BlogArticle[] {
       coverImage: normalizeImageSrc(asString(record.coverImage)),
       category: limitText(asString(record.category) || "随笔", 30),
       tags: normalizeStringList(record.tags, 12, 24),
-      authorRole: asString(record.authorRole) === "admin" ? "admin" : "limited",
-      authorName: limitText(asString(record.authorName) || (asString(record.authorRole) === "admin" ? "admin" : "limited"), 40),
+      authorRole: asString(record.authorRole) === "admin"
+        ? "admin"
+        : asString(record.authorRole) === "public" ? "public" : "limited",
+      authorName: limitText(
+        asString(record.authorName)
+          || (asString(record.authorRole) === "admin" ? "admin" : asString(record.authorRole) === "public" ? "匿名" : "limited"),
+        40
+      ),
       createdAt: asString(record.createdAt) || now,
       updatedAt: asString(record.updatedAt) || now,
       featured: typeof record.featured === "boolean" ? record.featured : false
     };
+  });
+}
+
+function normalizePublicBlogSlug(value: string): string {
+  const normalized = normalizePublicConfigRoute(value);
+  return normalized.split("/")[0] || "";
+}
+
+function normalizePublicArticleTags(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : asString(value).split(",");
+  return [...new Set(values.map((item) => limitText(asString(item), 24)).filter(Boolean))].slice(0, 12);
+}
+
+function normalizePublicArticleBody(value: string): string {
+  return value.replace(/\r\n?/g, "\n").trim().slice(0, 16_000);
+}
+
+function normalizePublicArticleCover(value: string): string {
+  const source = limitText(value, 1000);
+  if (source.startsWith("/") && !source.startsWith("//")) {
+    return source;
+  }
+
+  try {
+    const url = new URL(source);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function escapeHtml(value: string): string {
+  const entities: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  };
+
+  return value.replace(/[&<>"']/g, (character) => entities[character]);
+}
+
+function publicArticleHtml(body: string): string {
+  return body
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => "<p>" + escapeHtml(paragraph).replace(/\n/g, "<br>") + "</p>")
+    .join("");
+}
+
+async function handlePublicBlogArticleCreate(request: Request, env: AppEnv): Promise<Response> {
+  if (request.method !== "POST") {
+    return json({ error: "Method Not Allowed" }, 405);
+  }
+
+  if (!env.SITE_CONFIG) {
+    return json({ error: "SITE_CONFIG KV binding is missing" }, 503);
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > 100_000) {
+    return json({ error: "投稿内容过大，请减少正文或封面地址。" }, 413);
+  }
+
+  const body = asRecord(await readJson(request));
+  const slug = normalizePublicBlogSlug(asString(body.slug));
+  const config = await readSiteConfig(env);
+  const page = config.pages.find((item) => item.slug === slug && item.kind === "blog");
+
+  if (!page || !page.visible) {
+    return json({ error: "博客页面不存在" }, 404);
+  }
+
+  if (page.passwordEnabled) {
+    return json({ error: "这个博客页面需要解锁后才能投稿" }, 403);
+  }
+
+  const title = limitText(asString(body.title), 120);
+  const articleBody = normalizePublicArticleBody(asString(body.body));
+  if (!title || !articleBody) {
+    return json({ error: "文章标题和正文不能为空" }, 400);
+  }
+
+  const authorName = limitText(asString(body.authorName), 40) || "匿名";
+  const category = limitText(asString(body.category), 30) || page.blog.categories[0] || "随笔";
+  const summary = limitText(asString(body.summary), 220) || articleBody.replace(/\s+/g, " ").slice(0, 180);
+  const now = new Date().toISOString();
+  const article: BlogArticle = {
+    id: crypto.randomUUID(),
+    title,
+    summary,
+    body: articleBody,
+    bodyHtml: publicArticleHtml(articleBody),
+    coverImage: normalizePublicArticleCover(asString(body.coverImage)),
+    category,
+    tags: normalizePublicArticleTags(body.tags),
+    authorRole: "public",
+    authorName,
+    createdAt: now,
+    updatedAt: now,
+    featured: false
+  };
+
+  page.blog.articles = [article, ...page.blog.articles.filter((item) => item.id !== article.id)].slice(0, 200);
+  page.blog.categories = [...new Set([category, ...page.blog.categories])].slice(0, 20);
+  const nextConfig = withUpdatedAt(config);
+  await env.SITE_CONFIG.put(configKey, JSON.stringify(nextConfig));
+
+  return json({
+    ok: true,
+    article: toPublicArticleSummary(article),
+    updatedAt: nextConfig.updatedAt
+  });
+}
+
+async function handleAdminBlogArticleDelete(request: Request, env: AppEnv): Promise<Response> {
+  const auth = await requireAdmin(request, env);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  if (request.method !== "DELETE") {
+    return json({ error: "Method Not Allowed" }, 405);
+  }
+
+  if (!env.SITE_CONFIG) {
+    return json({ error: "SITE_CONFIG KV binding is missing" }, 503);
+  }
+
+  const url = new URL(request.url);
+  const slug = normalizePublicBlogSlug(url.searchParams.get("slug") || "");
+  const articleId = limitText(url.searchParams.get("id") || "", 120);
+  const baseUpdatedAt = limitText(url.searchParams.get("baseUpdatedAt") || "", 80);
+  const config = await readSiteConfig(env);
+
+  if (!slug || !articleId) {
+    return json({ error: "博客页面和文章 ID 不能为空" }, 400);
+  }
+
+  if (baseUpdatedAt && baseUpdatedAt !== config.updatedAt) {
+    return json({
+      error: "网站配置已在其他页面更新，请重新加载后再删除。",
+      code: "CONFIG_VERSION_CONFLICT",
+      updatedAt: config.updatedAt
+    }, 409);
+  }
+
+  const page = config.pages.find((item) => item.slug === slug && item.kind === "blog");
+  if (!page) {
+    return json({ error: "博客页面不存在" }, 404);
+  }
+
+  const article = page.blog.articles.find((item) => item.id === articleId);
+  if (!article) {
+    return json({ error: "文章不存在" }, 404);
+  }
+
+  if (auth.sub === "limited" && article.authorRole === "admin") {
+    return json({ error: "低权限管理员不能删除 admin 发布的文章" }, 403);
+  }
+
+  page.blog.articles = page.blog.articles.filter((item) => item.id !== articleId);
+  const nextConfig = withUpdatedAt(config);
+  await env.SITE_CONFIG.put(configKey, JSON.stringify(nextConfig));
+
+  return json({
+    ok: true,
+    role: auth.sub,
+    deletedArticleId: articleId,
+    updatedAt: nextConfig.updatedAt
   });
 }
 

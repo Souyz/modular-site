@@ -6,10 +6,17 @@
 
 - 正式网站：`https://neyc.de5.net`；管理后台：`/admin`。
 - GitHub 仓库：`larryllr/modular-site`，主分支 `main`。
-- Worker：`cloudflare-modular-site`；当前线上代码版本：`19cb5115-5ad9-41a6-990e-1ee96f3782dd`。
+- Worker：`cloudflare-modular-site`；当前线上代码版本：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
 - 2026-10-14 已按 Cloudflare 当前部署同步本地代码与 GitHub；网站内容独立保存在 KV `SITE_CONFIG` 和 D1 `GAME_DB`，不能用旧配置覆盖远端内容。
 - 新维护对话先读 [HANDOFF.md](HANDOFF.md)，再查看 `git status`、最近提交和 Cloudflare 当前部署。
 - 本机内容快照及备份位于 `Documents/Codex Website Backups/sync-20261014-website/`，受保护数据不进入公开仓库。
+
+## 2026-10-15 网站重设计与博客公开投稿
+
+- 管理后台和普通用户界面已完成整体重设计，采用新的白色/中性灰视觉系统、响应式布局、移动端导航抽屉、键盘焦点和 reduced-motion 支持。
+- 博客现在允许游客免登录投稿：前台通过 `POST /api/blog/articles` 接收署名、标题、分类、标签、封面地址、简介和纯文本正文；服务端会限制长度、转义 HTML、过滤危险封面协议，并把文章标记为 `authorRole: "public"`。
+- 管理员可通过博客列表删除文章，接口为 `DELETE /api/admin/blog/articles`；完整管理员可以删除所有文章，limited 管理员不能删除 `admin` 发布的文章。删除使用 `updatedAt` 冲突校验，不通过公开配置写入接口绕过权限。
+- 本轮发布使用的前端 bundle 为 `/site-assets/public/app-KYIJUDOY.js`、`/site-assets/admin/app-VFXTZVGX.js` 和 `/site-assets/styles-efae783db409.css`。Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
 
 ## 目录
 

@@ -1,5 +1,6 @@
 import { moduleLoaders } from "./modules/manifest.js";
 import { createConfigPatch } from "./config-patch.js";
+import { icon, withIcon, openDialog, confirmAction, notify, bindNavigation } from "./ui.js";
 
 const app = document.querySelector("#app");
 const adminTokenKey = "cloudflare-modular-site.admin-token";
@@ -119,7 +120,17 @@ const state = {
   token: localStorage.getItem(adminTokenKey) || "",
   adminRole: localStorage.getItem(adminRoleKey) || "admin",
   homeEntryLayout: localStorage.getItem(homeLayoutKey) === "one" ? "one" : "two",
-  selectedItemType: "page",
+  selectedItemType: "home",
+  adminTab: "content",
+  adminNavQuery: "",
+  homeSearch: "",
+  homeFilter: "all",
+  dirty: false,
+  savePending: false,
+  mediaPending: 0,
+  renderCleanups: [],
+  saveError: false,
+  navigationCleanup: null,
   selectedPageId: "",
   selectedLinkId: "",
   expandedSettings: "",
@@ -162,6 +173,16 @@ const api = {
     }
 
     return response.json();
+  },
+  deleteJson: async (path, useAuth = false) => {
+    const response = await fetch(path, requestOptions("DELETE", undefined, useAuth));
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new ApiError(payload.error || `Request failed: ${response.status}`, response.status, payload.code || "");
+    }
+
+    return response.json();
   }
 };
 
@@ -194,6 +215,7 @@ export async function startPublicApp(options = {}) {
 }
 
 export async function startAdminApp() {
+  installAdminShortcuts();
   try {
     await renderAdmin();
   } finally {
@@ -342,34 +364,65 @@ async function renderAdmin() {
 
 function renderLogin(message = "") {
   setAppClass("login-screen");
-
+  document.title = "登录管理后台 · 宽宽的网站";
+  const shell = element("main", "login-layout");
+  const story = element("section", "login-story");
+  const brand = element("a", "brand login-brand");
+  brand.href = "/";
+  brand.append(element("span", "brand-mark", "宽"), textBlock("宽宽的网站", "PERSONAL SPACE"));
+  story.append(brand, element("p", "eyebrow", "YOUR SPACE, YOUR WAY"), element("h1", "", "把想法，\n变成自己的空间。"), element("p", "login-story-copy", "记录日常，分享发现，整理常用工具。\n从这里，让每一页都更像你。"));
+  const graphic = element("div", "login-graphic");
+  for (const [name, label] of [["file", "页面"], ["blog", "文章"], ["link", "收藏"], ["image", "灵感"]]) {
+    const tile = element("div", "login-graphic-tile");
+    tile.append(icon(name), element("span", "", label));
+    graphic.append(tile);
+  }
+  story.append(graphic, element("p", "login-story-footer", "一个小小的网站，装下很多可能。"));
   const panel = element("section", "login-panel");
-  const brand = element("div", "brand");
-  brand.append(mark("AD"), textBlock("管理员界面", "输入密码后管理分页面和模块"));
-
+  panel.append(element("span", "login-lock", ""));
+  panel.firstChild.append(icon("shield"));
+  panel.append(element("p", "eyebrow", "SITE STUDIO"), element("h2", "", "欢迎回来"), element("p", "login-description", "登录后，继续打理你的网站。"));
   const form = element("form", "login-form");
+  const label = element("label", "field");
+  label.append(element("span", "", "管理员密码"));
+  const passwordRow = element("div", "password-input-wrap");
   const password = document.createElement("input");
   password.className = "input";
   password.type = "password";
-  password.placeholder = "管理员密码";
+  password.placeholder = "输入你的管理员密码";
+  password.setAttribute("aria-label", "管理员密码");
   password.autocomplete = "current-password";
   password.required = true;
-
-  const submit = button("登录", "button primary", "submit");
-  const help = element("p", "form-hint", "管理员密码请查看 README。上线后可用 Cloudflare 变量 admin 修改。");
+  const show = withIcon(button("", "icon-button password-toggle", "button"), "eye");
+  show.setAttribute("aria-label", "显示密码");
+  show.setAttribute("aria-pressed", "false");
+  show.addEventListener("click", () => {
+    const visible = password.type === "password";
+    password.type = visible ? "text" : "password";
+    show.setAttribute("aria-label", visible ? "隐藏密码" : "显示密码");
+    show.setAttribute("aria-pressed", String(visible));
+  });
+  passwordRow.append(password, show);
+  label.append(passwordRow);
+  const submit = withIcon(button("进入管理后台", "button primary", "submit"), "arrow");
   const feedback = element("p", "form-error", message);
-
-  form.append(password, submit, help, feedback);
-  form.addEventListener("submit", async (event) => {
+  feedback.id = "login-feedback";
+  feedback.setAttribute("role", "alert");
+  password.setAttribute("aria-describedby", feedback.id);
+  form.append(label, feedback, submit);
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     submit.disabled = true;
-    submit.textContent = "登录中";
+    submit.textContent = "正在登录…";
     feedback.textContent = "";
-
+    password.removeAttribute("aria-invalid");
     try {
       const payload = await api.postJson("/api/admin/login", { password: password.value });
       state.token = payload.token;
       state.adminRole = payload.role || "admin";
+      state.adminNavQuery = "";
+      state.adminTab = "content";
+      state.saveStatus = "";
       setLoadedConfig(payload.config);
       state.undoStack = [];
       state.undoFingerprint = "";
@@ -380,215 +433,182 @@ function renderLogin(message = "") {
       renderAdminEditor();
     } catch (error) {
       feedback.textContent = error.message;
+      password.setAttribute("aria-invalid", "true");
       submit.disabled = false;
-      submit.textContent = "登录";
+      submit.replaceChildren(icon("arrow"), document.createTextNode("进入管理后台"));
+      password.focus();
     }
   });
-
-  panel.append(brand, form);
-  app.replaceChildren(panel);
-  password.focus();
+  const back = element("a", "login-back-link", "返回网站");
+  back.href = "/";
+  back.prepend(icon("home"));
+  panel.append(form, element("p", "login-note", "完整管理员和协作管理员使用各自的密码登录。"), back);
+  shell.append(story, panel);
+  app.append(shell);
+  password.focus({ preventScroll: true });
 }
 
 function renderAdminEditor() {
+  const previousKey = state.adminRenderKey;
+  const previousScroll = window.scrollY;
+  const navScroll = app.querySelector(".admin-content-nav")?.scrollTop || 0;
   setAppClass("admin-shell");
   ensureAdminSelection();
-
-  const sidebar = element("aside", "sidebar admin-sidebar");
-  const brand = element("div", "brand");
-  brand.append(mark("AD"), textBlock("站点后台", "预览式页面编辑"));
   const selectedItem = getSelectedAdminItem();
-  const selectedHome = selectedItem?.type === "home";
-  const selectedPage = selectedItem?.type === "page" ? selectedItem.page : null;
-  const selectedLink = selectedItem?.type === "link" ? selectedItem.link : null;
-  const selectedLogs = selectedItem?.type === "logs";
+  const selectedPage = selectedItem?.page;
+  const selectedLink = selectedItem?.link;
   const limited = isLimitedAdmin();
   const gameEditorMode = shouldRenderAdminGameEditor() && !limited;
-
-  const homeSettingsNav = element("nav", "module-nav");
-  const homeSettingsButton = document.createElement("button");
-  homeSettingsButton.type = "button";
-  homeSettingsButton.classList.toggle("is-active", selectedHome);
-  homeSettingsButton.disabled = limited;
-  homeSettingsButton.append(mark("HM"), textBlock("主页设置", "标题、公告和全站设置"));
-  homeSettingsButton.addEventListener("click", () => {
-    clearAdminGameEditorMode();
-    state.selectedItemType = "home";
-    state.expandedSettings = "";
-    renderAdminEditor();
-  });
-  homeSettingsNav.append(homeSettingsButton);
-
-  const pageNav = element("nav", "module-nav");
-  for (const navItem of adminNavItems()) {
-    if (navItem.type === "link" && limited) {
-      continue;
-    }
-
-    if (navItem.type === "link") {
-      const link = navItem.link;
-      const group = element("section", "admin-page-nav-item");
-      group.dataset.navKey = navItem.key;
-      group.dataset.linkId = link.id;
-      const item = document.createElement("button");
-      item.type = "button";
-      item.draggable = false;
-      item.title = "按住拖动可调整入口顺序";
-      item.classList.toggle("is-active", state.selectedItemType === "link" && link.id === state.selectedLinkId);
-      item.append(linkMark(link), textBlock(link.title, externalLinkSubtitle(link)));
-      attachPointerSort(item, group, "nav", navItem.key, pageNav);
-      item.addEventListener("click", () => {
-        if (item.dataset.dragConsumed === "true") {
-          item.dataset.dragConsumed = "";
-          return;
-        }
-        state.selectedItemType = "link";
-        state.selectedLinkId = link.id;
-        state.expandedSettings = "";
-        clearAdminGameEditorMode();
-        renderAdminEditor();
-      });
-      group.append(item);
-
-      if (state.selectedItemType === "link" && link.id === state.selectedLinkId) {
-        group.append(renderExternalLinkSidebarSettings(link));
-      }
-
-      pageNav.append(group);
-      continue;
-    }
-
-    const page = navItem.page;
+  const currentKey = `${selectedItem?.type}:${selectedPage?.id || selectedLink?.id || ""}:${state.adminTab}:${gameEditorMode}`;
+  state.adminRenderKey = currentKey;
+  const title = gameEditorMode ? "游戏素材" : selectedPage?.title || selectedLink?.title || (selectedItem?.type === "logs" ? "访问记录" : "主页与站点");
+  document.title = `${title} · 站点后台`;
+  const sidebar = element("aside", "sidebar admin-sidebar");
+  sidebar.id = "site-navigation";
+  sidebar.setAttribute("aria-label", "管理导航");
+  const brand = element("a", "brand admin-brand");
+  brand.href = "/admin";
+  brand.append(element("span", "brand-mark", "宽"), textBlock("SITE STUDIO", "宽宽的网站后台"));
+  const close = withIcon(button("", "icon-button drawer-close", "button"), "close");
+  close.setAttribute("aria-label", "关闭导航菜单");
+  const brandRow = element("div", "sidebar-brand-row");
+  brandRow.append(brand, close);
+  const siteNav = element("nav", "module-nav admin-site-nav");
+  siteNav.setAttribute("aria-label", "站点管理");
+  for (const [type, name, symbol] of [["home", "主页与站点", "home"], ["logs", "访问记录", "chart"]]) {
+    const item = withIcon(button(name, "admin-nav-button", "button"), symbol);
+    item.classList.toggle("is-active", !gameEditorMode && selectedItem?.type === type);
+    item.setAttribute("aria-current", item.classList.contains("is-active") ? "page" : "false");
+    item.disabled = limited;
+    item.addEventListener("click", () => selectAdminItem(type));
+    siteNav.append(item);
+  }
+  const navigationItems = adminNavItems().filter(item => !limited || item.type === "page");
+  const navHeading = element("div", "sidebar-section-heading");
+  navHeading.append(element("span", "", "网站内容"), element("span", "nav-total", String(navigationItems.length)));
+  const search = element("label", "search-field sidebar-search");
+  search.append(icon("search"));
+  const searchInput = document.createElement("input");
+  searchInput.type = "search";
+  searchInput.placeholder = "查找页面或入口";
+  searchInput.setAttribute("aria-label", "查找页面或入口");
+  searchInput.value = state.adminNavQuery;
+  searchInput.dataset.adminSearch = "true";
+  search.append(searchInput);
+  const pageNav = element("nav", "module-nav admin-content-nav");
+  pageNav.setAttribute("aria-label", "页面与网站入口");
+  const groups = [];
+  for (const navItem of navigationItems) {
+    const page = navItem.page, link = navItem.link;
     const group = element("section", "admin-page-nav-item");
     group.dataset.navKey = navItem.key;
-    group.dataset.pageId = page.id;
-    const item = document.createElement("button");
-    item.type = "button";
-    item.draggable = false;
-    item.title = limited ? "" : "按住拖动可调整分页面顺序";
-    item.classList.toggle("is-active", state.selectedItemType === "page" && page.id === state.selectedPageId);
-    item.append(pageSidebarMark(page), textBlock(sidebarPageTitle(page), sidebarPageDescription(page)));
-    if (!limited) {
-      attachPointerSort(item, group, "nav", navItem.key, pageNav);
+    if (page) group.dataset.pageId = page.id;
+    else group.dataset.linkId = link.id;
+    const item = button("", "admin-nav-button content-nav-button", "button");
+    const active = !gameEditorMode && selectedItem?.type === navItem.type && (page ? page.id === state.selectedPageId : link.id === state.selectedLinkId);
+    item.classList.toggle("is-active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    const label = page ? sidebarPageTitle(page) : link.title;
+    item.append(page ? pageSidebarMark(page) : linkMark(link), textBlock(label, page ? (page.kind === "blog" ? "博客" : `/${page.slug}`) : externalLinkSubtitle(link)));
+    if (!(page || link).visible) {
+      const badge = element("span", "nav-hidden-dot");
+      badge.title = "已隐藏";
+      item.append(badge);
     }
-    item.addEventListener("click", () => {
-      if (item.dataset.dragConsumed === "true") {
-        item.dataset.dragConsumed = "";
-        return;
-      }
-      state.selectedItemType = "page";
-      state.selectedPageId = page.id;
-      state.expandedSettings = "";
-      clearAdminGameEditorMode();
-      renderAdminEditor();
-    });
-
+    item.addEventListener("click", () => selectAdminItem(navItem.type, (page || link).id));
     group.append(item);
-
-    if (state.selectedItemType === "page" && page.id === state.selectedPageId) {
-      group.append(renderPageSidebarSettings(page));
+    if (!limited) {
+      const grip = withIcon(button("", "icon-button admin-drag-handle", "button"), "grip");
+      grip.setAttribute("aria-label", `调整${label}的顺序`);
+      grip.title = "拖动调整顺序；也可按 Alt + 上下方向键";
+      attachPointerSort(grip, group, "nav", navItem.key, pageNav);
+      grip.addEventListener("keydown", event => {
+        if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+        event.preventDefault();
+        const items = adminNavItems();
+        const at = items.findIndex(entry => entry.key === navItem.key);
+        const target = items[at + (event.key === "ArrowUp" ? -1 : 1)];
+        if (target) reorderNavByKey(navItem.key, target.key);
+      });
+      group.append(grip);
     }
-
+    group.dataset.searchText = `${label} ${page?.slug || link?.targetUrl || ""}`.toLocaleLowerCase();
     pageNav.append(group);
+    groups.push(group);
   }
-
-  const addPageButton = button("新增分页面", "button primary", "button");
-  addPageButton.disabled = limited;
-  addPageButton.addEventListener("click", () => {
-    clearAdminGameEditorMode();
-    rememberConfigChange();
-    const page = createPage();
-    state.config.pages.push(page);
-    appendNavOrder(`page:${page.id}`);
-    state.selectedItemType = "page";
-    state.selectedPageId = page.id;
-    state.expandedSettings = "";
-    renderAdminEditor();
-  });
-
-  const addBlogPageButton = button("新增博客分页面", "button", "button");
-  addBlogPageButton.disabled = limited;
-  addBlogPageButton.addEventListener("click", () => {
-    clearAdminGameEditorMode();
-    rememberConfigChange();
-    const page = createBlogPage();
-    state.config.pages.push(page);
-    appendNavOrder(`page:${page.id}`);
-    state.selectedItemType = "page";
-    state.selectedPageId = page.id;
-    state.expandedSettings = "";
-    renderAdminEditor();
-  });
-
-  const addLinkButton = button("新增网站入口", "button", "button");
-  addLinkButton.disabled = limited;
-  addLinkButton.addEventListener("click", () => {
-    clearAdminGameEditorMode();
-    rememberConfigChange();
-    const link = createExternalLink();
-    state.config.links.push(link);
-    appendNavOrder(`link:${link.id}`);
-    state.selectedItemType = "link";
-    state.selectedLinkId = link.id;
-    state.expandedSettings = "";
-    renderAdminEditor();
-  });
-
-  const homeButton = button("查看主页", "button", "button");
-  homeButton.addEventListener("click", () => {
-    window.location.href = "/";
-  });
-
-  const logsButton = button("访问日志", "button", "button");
-  logsButton.classList.toggle("is-active", selectedLogs);
-  logsButton.disabled = limited;
-  logsButton.addEventListener("click", () => {
-    clearAdminGameEditorMode();
-    state.selectedItemType = "logs";
-    state.expandedSettings = "";
-    renderAdminEditor();
-  });
-
-  const logoutButton = button("退出登录", "button", "button");
-  logoutButton.addEventListener("click", () => {
+  const noResults = element("p", "nav-empty", "没有找到匹配的内容");
+  pageNav.append(noResults);
+  const filterNav = () => {
+    state.adminNavQuery = searchInput.value;
+    const query = searchInput.value.trim().toLocaleLowerCase();
+    for (const group of groups) group.hidden = !group.dataset.searchText.includes(query);
+    noResults.hidden = groups.some(group => !group.hidden);
+  };
+  searchInput.addEventListener("input", filterNav);
+  filterNav();
+  const add = withIcon(button("新增内容", "button primary sidebar-create", "button"), "plus");
+  add.disabled = limited;
+  add.addEventListener("click", openCreateContentDialog);
+  const footer = element("div", "admin-sidebar-footer");
+  const visit = element("a", "sidebar-visit", "查看网站");
+  visit.href = "/";
+  visit.target = "_blank";
+  visit.rel = "noopener noreferrer";
+  visit.append(icon("external"));
+  const account = element("div", "admin-account");
+  account.append(element("span", "account-avatar", "宽"), textBlock(limited ? "协作管理员" : "管理员", limited ? "受限编辑权限" : "完整管理权限"));
+  const logout = withIcon(button("", "icon-button", "button"), "logout");
+  logout.setAttribute("aria-label", "退出登录");
+  logout.addEventListener("click", async () => {
+    if (state.dirty && !(await confirmAction({ title: "退出前还有未保存的修改", description: "退出会丢失当前未保存的内容。你可以取消并先保存。", confirmLabel: "退出登录", destructive: true }))) return;
     state.token = "";
     state.adminRole = "admin";
+    state.dirty = false;
+    state.adminNavQuery = "";
+    state.adminTab = "content";
+    state.selectedItemType = "home";
+    state.openArticleId = "";
+    state.saveStatus = "";
     localStorage.removeItem(adminTokenKey);
     localStorage.removeItem(adminRoleKey);
     renderLogin();
   });
-
-  const sidebarActions = element("div", "sidebar-actions");
-  sidebarActions.append(addPageButton, addBlogPageButton, addLinkButton, logsButton, homeButton, logoutButton);
-  sidebar.append(brand, homeSettingsNav, pageNav, sidebarActions);
-
+  account.append(logout);
+  footer.append(visit, account);
+  sidebar.append(brandRow, element("p", "sidebar-section-label", "工作空间"), siteNav, navHeading, search, pageNav, add, footer);
   const main = element("main", "admin-workspace");
-  const title = element("header", "workspace-header compact");
-  const titleText = element("div");
-  titleText.append(element("p", "eyebrow", "Preview Admin"), element("h1", "", "预览模式编辑"));
-  if (limited) {
-    titleText.append(element("p", "form-hint", "低权限模式：只能添加模块、移动模块和保存模块顺序。"));
-  }
-  title.append(titleText);
-
-  main.append(title);
-
+  const topbar = element("header", "admin-topbar");
+  const crumb = element("div", "admin-breadcrumb");
+  crumb.append(element("span", "", "站点后台"), icon("chevron"), element("strong", "", title));
+  topbar.append(crumb);
+  if (!gameEditorMode) topbar.append(renderSaveBar(selectedItem));
+  const content = element("div", "admin-content");
+  const heading = element("header", "admin-content-heading");
+  const headingCopy = element("div");
+  headingCopy.append(element("p", "eyebrow", gameEditorMode ? "GAME LIBRARY" : selectedItem?.type === "home" ? "YOUR WEBSITE" : selectedPage?.kind === "blog" ? "WRITING ROOM" : "CONTENT STUDIO"), element("h1", "", title));
+  const descriptions = { home: "整理首页与站点信息，让每个入口都清晰好找。", logs: "查看网站访问与评论拦截记录。", link: "完善入口信息、图标和展示方式。", page: selectedPage?.kind === "blog" ? "专注写作，管理文章与博客展示。" : "组织内容模块，打磨页面的每个细节。" };
+  headingCopy.append(element("p", "", descriptions[selectedItem?.type] || "管理游戏素材与关卡数据。"));
+  heading.append(headingCopy);
+  if (selectedPage || selectedLink) heading.append(element("span", `visibility-badge${(selectedPage || selectedLink).visible ? "" : " is-hidden"}`, (selectedPage || selectedLink).visible ? "公开展示" : "已隐藏"));
+  content.append(heading);
+  if (!gameEditorMode && selectedItem?.type !== "logs") content.append(renderAdminTabs(selectedItem));
   if (gameEditorMode) {
-    main.append(renderAdminGameEditor());
-  } else if (selectedLogs) {
-    main.append(renderAccessLogsPanel());
-  } else if (selectedHome) {
-    main.append(renderHomeSettings());
-  } else if (selectedPage) {
-    main.append(renderPreviewEditor(selectedPage));
-  } else if (selectedLink) {
-    main.append(renderExternalLinkEditor(selectedLink));
+    content.append(renderAdminGameEditor());
   }
-
-  if (!gameEditorMode) {
-    main.append(renderSaveBar(selectedItem));
-  }
-  app.replaceChildren(sidebar, main);
+  else if (selectedItem?.type === "logs") content.append(renderAccessLogsPanel());
+  else if (selectedItem?.type === "home") content.append(state.adminTab === "security" ? renderSiteSecurity() : renderHomeSettings());
+  else if (selectedPage) content.append(renderPreviewEditor(selectedPage));
+  else if (selectedLink) content.append(renderExternalLinkEditor(selectedLink));
+  main.append(topbar, content);
+  const { bar, trigger } = renderMobileTopbar("站点后台");
+  const scrim = button("", "navigation-scrim", "button");
+  scrim.setAttribute("aria-label", "关闭导航菜单");
+  app.replaceChildren(bar, sidebar, main, scrim);
+  state.navigationCleanup = bindNavigation(app, sidebar, trigger, scrim);
+  close.addEventListener("click", () => scrim.click());
+  pageNav.scrollTop = navScroll;
+  window.scrollTo({ top: previousKey === currentKey ? previousScroll : 0, behavior: "instant" });
+  setSaveBarStatus(state.saveStatus, state.savePending);
 }
 
 function shouldRenderAdminGameEditor() {
@@ -668,57 +688,39 @@ function renderExternalLinkSidebarSettings(link) {
 }
 
 function renderHomeSettings() {
-  const panel = element("section", "admin-panel");
-  const announcement = state.config.announcement;
-  panel.append(element("h2", "", "主页入口设置"));
-  panel.append(
-    field("主页标题", state.config.homeTitle, (value) => {
-      state.config.homeTitle = value;
-    })
-  );
-  panel.append(
-    areaField("主页说明", state.config.homeDescription, (value) => {
-      state.config.homeDescription = value;
-    })
-  );
-  panel.append(
-    imageValueField("主页展示图片", state.config.homeImage, (value) => {
-      state.config.homeImage = value;
-    })
-  );
-  if (!isLimitedAdmin()) {
-    panel.append(renderAdminPasswordSettings());
-    panel.append(renderCommentBlockWordsSettings());
+  const region = element("div", "home-settings-layout");
+  const overview = element("section", "admin-overview");
+  const articleCount = state.config.pages.reduce((total, page) => total + (page.blog?.articles?.length || 0) + (page.sections || []).filter(section => section.type === "blog").reduce((sum, section) => sum + (section.articles?.length || 0), 0), 0);
+  for (const [symbol, value, label] of [["file", state.config.pages.length, "分页面"], ["link", state.config.links.length, "网站入口"], ["blog", articleCount, "已发布文章"]]) {
+    const metric = element("div", "overview-metric");
+    metric.append(icon(symbol), element("strong", "", String(value)), element("span", "", label));
+    overview.append(metric);
   }
-  const notice = element("section", "announcement-settings");
-  notice.append(element("h3", "", "主页公告"));
-  notice.append(
-    checkbox("启用公告弹幕", announcement.enabled, (checked) => {
-      announcement.enabled = checked;
-      renderAdminEditor();
-    })
-  );
-  const noticeRow = element("div", "admin-row");
-  noticeRow.append(
-    field("公告标题", announcement.title, (value) => {
-      announcement.title = value;
-    })
-  );
-  noticeRow.append(
-    numberField("几秒后自动关闭", announcement.durationSeconds, 0, 120, 1, (value) => {
-      announcement.durationSeconds = value;
-      renderAdminEditor();
-    })
-  );
-  notice.append(noticeRow);
-  notice.append(
-    areaField("公告内容", announcement.text, (value) => {
-      announcement.text = value;
-    })
-  );
-  notice.append(element("p", "form-hint", "填 0 秒表示不自动关闭；公告只在主页显示，会以弹幕形式横向滚动。"));
-  panel.append(notice);
-  return panel;
+  region.append(overview);
+  const info = element("section", "admin-panel site-information");
+  info.append(sectionHeading("站点信息", "访客打开首页时，最先看到的介绍。"));
+  info.append(field("主页标题", state.config.homeTitle, value => { state.config.homeTitle = value; }), areaField("主页说明", state.config.homeDescription, value => { state.config.homeDescription = value; }, "简短介绍这个空间，或分享你最近在做的事。"));
+  const visual = element("section", "admin-panel site-visual");
+  visual.append(sectionHeading("首页展示图片", "一张照片，让这个空间更有你的气息。"));
+  visual.append(compactImageValueField("展示图片", state.config.homeImage, value => { state.config.homeImage = value; }, { hint: "支持上传或填写图片地址，建议使用横向图片。" }));
+  const preview = element("div", "home-copy-preview");
+  preview.append(element("span", "eyebrow", "首页文字预览"), element("strong", "", state.config.homeTitle), element("p", "", state.config.homeDescription));
+  visual.append(preview);
+  info.addEventListener("input", () => {
+    preview.querySelector("strong").textContent = state.config.homeTitle;
+    preview.querySelector("p").textContent = state.config.homeDescription;
+  });
+  const announcement = state.config.announcement;
+  const notice = element("section", "admin-panel announcement-settings");
+  notice.append(sectionHeading("首页公告", "有新消息时，让访客第一时间看到。"));
+  notice.append(checkbox("在首页显示公告", announcement.enabled, checked => { announcement.enabled = checked; renderAdminEditor(); }));
+  if (announcement.enabled) {
+    const row = element("div", "admin-row");
+    row.append(field("公告标题", announcement.title, value => { announcement.title = value; }), numberField("自动关闭时间（秒）", announcement.durationSeconds, 0, 120, 1, value => { announcement.durationSeconds = value; }));
+    notice.append(row, areaField("公告内容", announcement.text, value => { announcement.text = value; }), element("p", "form-hint", "关闭时间设为 0 时，公告会保留到访客主动关闭。"));
+  }
+  region.append(info, visual, notice);
+  return region;
 }
 
 function renderAdminGameEditor() {
@@ -1520,104 +1522,65 @@ function renderCommentBlockWordsSettings() {
 function renderPreviewEditor(page) {
   const limited = isLimitedAdmin();
   const pageLockedForLimited = limited && page.locked;
+  if (state.adminTab === "settings") {
+    if (pageLockedForLimited) return element("p", "empty-state", "此页面已锁定，你暂时没有编辑权限。");
+    return renderPageSettings(page);
+  }
+  if (state.adminTab === "appearance") {
+    if (pageLockedForLimited) return element("p", "empty-state", "此页面已锁定，你暂时没有编辑权限。");
+    return renderEntrySettings(page);
+  }
   const panel = element("section", "admin-panel preview-editor");
-  const head = element("div", "section-head action-head");
-  const copy = element("div");
-  copy.append(element("h2", "", "分页面预览"));
-  copy.append(element("p", "", "在预览里插入、编辑、移动模块。保存后前台页面立即使用这套顺序。"));
-
-  const headActions = element("div", "module-actions");
-  const view = button(`打开 /${page.slug}`, "button", "button");
-  view.addEventListener("click", () => {
-    window.open(`/${page.slug}`, "_blank", "noopener,noreferrer");
-  });
-  const removePage = button("删除页面", "button danger", "button");
-  removePage.disabled = limited;
-  removePage.addEventListener("click", () => deletePage(page));
-  headActions.append(view, removePage);
-  head.append(copy, headActions);
-
+  if (pageLockedForLimited) {
+    panel.append(element("p", "empty-state", "此页面已锁定，你暂时没有编辑权限。"));
+    return panel;
+  }
   if (page.kind === "blog") {
     const blog = hydrateBlogSection(page.blog);
     page.blog = blog;
-    if (pageLockedForLimited) {
-      panel.append(head, element("p", "empty-state", "这个博客分页面已锁定，低权限管理员无法编辑。"));
-    } else {
-      panel.append(head, renderEntrySettings(page), renderEditableBlogSection(blog), renderBlogPagePreview(page));
-    }
+    panel.append(renderEditableBlogSection(blog));
     return panel;
   }
-
+  const head = sectionHeading("内容模块", "点击模块展开编辑，使用上下箭头调整展示顺序。");
+  head.classList.add("content-module-heading");
+  head.append(element("span", "count-badge", `${page.sections.length} 个模块`));
   const canvas = element("div", "page-preview");
-  applyPageBackground(canvas, page.backgroundImage);
-  if (!pageLockedForLimited) {
-    canvas.append(renderEditablePageHeader(page));
-  }
-  if (!pageLockedForLimited) {
-    canvas.append(renderInsertBar(page, 0));
-  }
-
+  canvas.append(renderEditablePageHeader(page), renderInsertBar(page, 0));
   page.sections.forEach((section, index) => {
-    canvas.append(renderEditableSection(page, section, index));
-    if (!pageLockedForLimited) {
-      canvas.append(renderInsertBar(page, index + 1));
-    }
+    canvas.append(renderEditableSection(page, section, index), renderInsertBar(page, index + 1));
   });
-
-  if (page.sections.length === 0) {
-    canvas.append(element("p", "empty-state", pageLockedForLimited ? "这个分页面已锁定，低权限管理员无法编辑。" : "这个分页面还没有内容。可以从上面的插入条添加模块。"));
+  if (!page.sections.length) {
+    const empty = element("div", "editor-empty-state");
+    empty.append(icon("grid"), element("h3", "", "从第一个模块开始"), element("p", "", "写一段文字、放一张图片，或添加一个实用工具。"));
+    const add = withIcon(button("添加模块", "button primary", "button"), "plus");
+    add.addEventListener("click", () => openInsertDialog(page, 0));
+    empty.append(add);
+    canvas.append(empty);
   }
-
-  if (pageLockedForLimited) {
-    panel.append(head, canvas);
-  } else {
-    panel.append(head, renderEntrySettings(page), renderBottomCommentsSettings(page), canvas);
-  }
+  panel.append(head, canvas);
   return panel;
 }
 
 function renderExternalLinkEditor(link) {
+  const region = element("div", "external-editor-layout");
   const panel = element("section", "admin-panel external-link-editor");
-  const head = element("div", "section-head action-head");
-  const copy = element("div");
-  copy.append(element("h2", "", "外部网站入口"));
-  copy.append(element("p", "", "这个入口会出现在主页卡片和左侧导航里，点击后前往目标网站。"));
-
-  const headActions = element("div", "module-actions");
-  const targetUrl = normalizeExternalUrl(link.targetUrl);
-  const open = button("打开目标", "button", "button");
-  open.disabled = !targetUrl;
-  open.addEventListener("click", () => {
-    if (targetUrl) {
-      window.open(targetUrl, "_blank", "noopener,noreferrer");
-    }
-  });
-  const remove = button("删除入口", "button danger", "button");
+  panel.append(sectionHeading("入口信息", "名称和说明会展示在首页卡片与导航中。"));
+  const preview = renderExternalLinkPreview(link);
+  const refreshPreview = () => {
+    const previous = preview.querySelector(".entry-card");
+    previous?.replaceWith(renderExternalLinkEntry(link));
+  };
+  panel.append(field("入口名称", link.title, value => { link.title = value; refreshPreview(); }), field("目标网址", link.targetUrl, value => { link.targetUrl = value.trim(); refreshPreview(); }, "填写完整网站地址，或本站的 /路径。"), areaField("入口说明", link.description, value => { link.description = value; refreshPreview(); }), checkbox("在首页和导航中展示", link.visible, checked => { link.visible = checked; renderAdminEditor(); }));
+  const appearance = element("section", "admin-panel");
+  appearance.append(sectionHeading("图标与封面", "让访客一眼认出这个入口。"));
+  appearance.append(field("图标文字", link.iconText, value => { link.iconText = normalizeExternalLinkIconTextInput(value); refreshPreview(); }, `最多 ${externalLinkIconTextMaxLength} 个字符；没有自定义图片时显示。`, { maxLength: externalLinkIconTextMaxLength, normalize: normalizeExternalLinkIconTextInput }), compactImageValueField("自定义图标", link.iconImage, value => { link.iconImage = value; refreshPreview(); }), compactImageValueField("入口封面", link.backgroundImage, value => { link.backgroundImage = value; refreshPreview(); }));
+  const aside = element("aside", "admin-panel entry-live-preview");
+  aside.append(sectionHeading("首页展示预览", "保存后，访客会看到这样的入口。"), preview);
+  const remove = withIcon(button("删除入口", "button danger", "button"), "trash");
   remove.addEventListener("click", () => deleteExternalLink(link));
-  headActions.append(open, remove);
-  head.append(copy, headActions);
-
-  const iconRow = element("div", "admin-row");
-  iconRow.append(
-    field("图标文字", link.iconText, (value) => {
-      link.iconText = normalizeExternalLinkIconTextInput(value);
-    }, `最多 ${externalLinkIconTextMaxLength} 个字符；未上传图标时，会先尝试使用目标网站图标，读取失败时显示这段文字。`, {
-      maxLength: externalLinkIconTextMaxLength,
-      normalize: normalizeExternalLinkIconTextInput
-    })
-  );
-  iconRow.append(imageValueField("自定义图标", link.iconImage, (value) => {
-    link.iconImage = value;
-  }));
-
-  const backgroundRow = element("div", "admin-row");
-  backgroundRow.append(imageValueField("入口背景", link.backgroundImage, (value) => {
-    link.backgroundImage = value;
-  }));
-  backgroundRow.append(renderExternalLinkPreview(link));
-
-  panel.append(head, iconRow, backgroundRow);
-  return panel;
+  aside.append(remove);
+  region.append(panel, aside, appearance);
+  return region;
 }
 
 function renderExternalLinkPreview(link) {
@@ -1643,7 +1606,7 @@ function renderAccessLogsPanel() {
   });
 
   clear.addEventListener("click", async () => {
-    if (!confirm("确定清空全部访问日志？")) {
+    if (!(await confirmAction({ title: "清空全部访问记录？", description: "访问记录和评论拦截记录将被永久清空。", confirmLabel: "清空记录", destructive: true }))) {
       return;
     }
 
@@ -1705,44 +1668,24 @@ function renderAccessLogsList(list, logs) {
 
 function renderEditablePageHeader(page) {
   const header = element("section", "preview-page-header editable-page-header");
-
-  const slugField = element("label", "inline-edit-field inline-slug-field");
-  slugField.append(element("span", "", "网址后缀"));
-  const slugRow = element("div", "inline-slug-row");
-  slugRow.append(element("strong", "", "/"));
-  const slugInput = document.createElement("input");
-  slugInput.className = "inline-input inline-slug-input";
-  slugInput.value = page.slug;
-  slugInput.addEventListener("change", () => {
-    rememberConfigChange();
-    page.slug = uniquePageSlug(page, slugInput.value);
-    renderAdminEditor();
-  });
-  slugRow.append(slugInput);
-  slugField.append(slugRow);
-
   const titleInput = document.createElement("input");
   titleInput.className = "inline-input inline-title-input";
   titleInput.value = page.title || "";
-  titleInput.placeholder = "分页面标题";
+  titleInput.placeholder = "为页面起个名字";
+  titleInput.setAttribute("aria-label", "页面标题");
   trackUndoOnEdit(titleInput);
-  titleInput.addEventListener("input", () => {
-    page.title = titleInput.value;
-  });
-  titleInput.addEventListener("change", () => renderAdminEditor());
-
+  titleInput.addEventListener("input", () => { page.title = titleInput.value; markConfigDirty(); });
   const descriptionInput = document.createElement("textarea");
   descriptionInput.className = "inline-input inline-description-input";
   descriptionInput.value = page.description || "";
-  descriptionInput.placeholder = "这个分页面还没有说明。";
+  descriptionInput.placeholder = "添加简短说明，让访客更了解这一页。";
+  descriptionInput.setAttribute("aria-label", "页面说明");
   descriptionInput.rows = 2;
   trackUndoOnEdit(descriptionInput);
-  descriptionInput.addEventListener("input", () => {
-    page.description = descriptionInput.value;
-  });
-
-  header.append(slugField, titleInput, descriptionInput);
-
+  descriptionInput.addEventListener("input", () => { page.description = descriptionInput.value; markConfigDirty(); });
+  const path = element("span", "editor-page-path", `/${page.slug}`);
+  path.prepend(icon("link"));
+  header.append(path, titleInput, descriptionInput);
   return header;
 }
 
@@ -1754,8 +1697,8 @@ function renderModernEntryEditor(page) {
   const limited = isLimitedAdmin();
   const panel = element("section", "entry-settings modern-entry-settings");
   const head = element("div", "section-head");
-  head.append(element("h2", "", "入口卡片"));
-  head.append(element("p", "", "直接在卡片里改标题和说明；图片与侧边栏设置收在右侧。"));
+  head.append(element("h2", "", "入口与页面外观"));
+  head.append(element("p", "", "为首页入口与分页面选择图标和背景，文字可以直接在预览里编辑。"));
 
   const layout = element("div", "modern-entry-layout");
   const preview = element("article", "module-card entry-card editable-entry-preview");
@@ -1836,23 +1779,6 @@ function renderModernEntryEditor(page) {
   layout.append(preview, settings);
   panel.append(head, layout);
 
-  if (!limited) {
-    const passwordPanel = document.createElement("details");
-    passwordPanel.className = "modern-settings-details page-password-settings";
-    passwordPanel.append(element("summary", "", "分页面密码与权限"));
-    const passwordGrid = element("div", "modern-details-grid");
-    passwordGrid.append(
-      checkbox("进入这个分页面需要密码", page.passwordEnabled, (checked) => {
-        page.passwordEnabled = checked;
-        renderAdminEditor();
-      }),
-      compactTextField("分页面专属密码", page.pagePassword, (value) => {
-        page.pagePassword = value;
-      }, "开启后，访客输入正确密码前不会看到这个分页面的标题、模块、评论和背景。")
-    );
-    passwordPanel.append(passwordGrid);
-    panel.append(passwordPanel);
-  }
   return panel;
 }
 
@@ -1928,28 +1854,9 @@ function renderBottomCommentsSettings(page) {
 
 function renderInsertBar(page, index) {
   const bar = element("div", "insert-bar");
-  bar.append(element("span", "", index === 0 ? "在页面开头插入" : "在这里插入"));
-
-  const system = button("系统模块", "button", "button");
-  system.addEventListener("click", () => insertSection(page, index, createSystemSection()));
-  const text = button("文本模块", "button", "button");
-  text.addEventListener("click", () => insertSection(page, index, createTextSection()));
-  const image = button("图片模块", "button primary", "button");
-  image.addEventListener("click", () => insertSection(page, index, createImageSection()));
-  const video = button("视频模块", "button", "button");
-  video.addEventListener("click", () => insertSection(page, index, createVideoSection()));
-  const comments = button("评论模块", "button", "button");
-  comments.addEventListener("click", () => insertSection(page, index, createCommentsSection()));
-  const link = button("网站模块", "button", "button");
-  link.addEventListener("click", () => insertSection(page, index, createLinkSection()));
-  const navigation = button("导航模块", "button", "button");
-  navigation.addEventListener("click", () => insertSection(page, index, createNavigationSection()));
-  const article = button("文章模块", "button", "button");
-  article.addEventListener("click", () => insertSection(page, index, createArticleSection()));
-  const blog = button("博客模块", "button", "button");
-  blog.addEventListener("click", () => insertSection(page, index, createBlogSection()));
-
-  bar.append(system, text, image, video, link, navigation, article, blog, comments);
+  const add = withIcon(button(index === 0 ? "添加内容模块" : "在这里添加", "insert-module-button", "button"), "plus");
+  add.addEventListener("click", () => openInsertDialog(page, index));
+  bar.append(add);
   return bar;
 }
 
@@ -1960,34 +1867,31 @@ function renderEditableSection(page, section, index) {
   const limitedLocked = isLimitedAdmin() && (page.locked || locked);
   shell.classList.toggle("is-locked", locked);
   shell.classList.toggle("is-collapsed", !expanded);
+  shell.dataset.sectionId = section.id;
   shell.append(renderSectionControls(page, section, index, expanded));
-
   if (expanded && !limitedLocked) {
-    shell.append(renderLayoutSettings(section, "模块布局", page, index));
-
-    if (section.type === "system") {
-      shell.append(renderEditableSystemSection(page, section));
-    } else if (section.type === "image") {
-      shell.append(renderEditableImageSection(section));
-    } else if (section.type === "video") {
-      shell.append(renderEditableVideoSection(section));
-    } else if (section.type === "p2p") {
-      shell.append(renderEditableP2PSection(section));
-    } else if (section.type === "link") {
-      shell.append(renderEditableLinkSection(section));
-    } else if (section.type === "navigation") {
-      shell.append(renderEditableNavigationSection(section));
-    } else if (section.type === "article") {
-      shell.append(renderEditableArticleSection(section));
-    } else if (section.type === "blog") {
-      shell.append(renderEditableBlogSection(section));
-    } else if (section.type === "comments") {
-      shell.append(renderEditableCommentsSection(page, section));
-    } else {
-      shell.append(renderEditableTextSection(section));
-    }
+    let editor;
+    if (section.type === "system") editor = renderEditableSystemSection(page, section);
+    else if (section.type === "image") editor = renderEditableImageSection(section);
+    else if (section.type === "video") editor = renderEditableVideoSection(section);
+    else if (section.type === "p2p") editor = renderEditableP2PSection(section);
+    else if (section.type === "link") editor = renderEditableLinkSection(section);
+    else if (section.type === "navigation") editor = renderEditableNavigationSection(section);
+    else if (section.type === "article") editor = renderEditableArticleSection(section);
+    else if (section.type === "blog") editor = renderEditableBlogSection(section);
+    else if (section.type === "comments") editor = renderEditableCommentsSection(page, section);
+    else editor = renderEditableTextSection(section);
+    const body = element("div", "section-editor-content");
+    body.append(editor);
+    const layout = document.createElement("details");
+    layout.className = "modern-settings-details module-layout-details";
+    layout.append(element("summary", "", "布局与编辑权限"), renderLayoutSettings(section, "模块布局", page, index));
+    body.append(layout);
+    shell.append(body);
+  } else {
+    const description = limitedLocked ? "这个模块已锁定，你暂时没有编辑权限。" : section.description || section.body || section.title || (section.type === "navigation" ? `${section.items?.length || 0} 个网址` : "点击展开，编辑模块内容与展示方式。");
+    shell.append(element("p", "section-collapsed-summary", description));
   }
-
   return shell;
 }
 
@@ -1995,34 +1899,42 @@ function renderSectionControls(page, section, index, expanded) {
   const controls = element("div", "section-controls");
   const locked = Boolean(section.layout?.locked);
   const limitedLocked = isLimitedAdmin() && (page.locked || locked);
-  const toggle = button(expanded ? "▾" : "▸", "section-toggle", "button");
-  toggle.setAttribute("aria-label", expanded ? "折叠模块" : "展开模块");
+  const copy = element("div", "section-control-copy");
+  copy.append(element("span", "section-index", String(index + 1).padStart(2, "0")), element("strong", "", sectionLabel(section)));
+  if (locked) copy.append(icon("lock"));
+  const toggle = withIcon(button(expanded ? "收起" : "编辑", "section-toggle", "button"), expanded ? "up" : "down");
+  toggle.disabled = limitedLocked;
+  toggle.setAttribute("aria-label", `${expanded ? "收起" : "编辑"}${sectionLabel(section)}`);
+  toggle.setAttribute("aria-expanded", String(expanded));
   toggle.addEventListener("click", () => {
-    if (expanded) {
-      state.expandedSections.delete(section.id);
-    } else {
-      state.expandedSections.add(section.id);
-    }
+    if (expanded) state.expandedSections.delete(section.id);
+    else state.expandedSections.add(section.id);
     renderAdminEditor();
   });
-  controls.append(toggle, element("strong", "", locked ? `${sectionLabel(section)}（限制低权限）` : sectionLabel(section)));
-
   const tools = element("div", "section-tools");
-  const up = button("上移", "button", "button");
+  const up = withIcon(button("", "icon-button", "button"), "up");
+  up.setAttribute("aria-label", "上移模块");
+  up.title = "上移模块";
   up.disabled = limitedLocked || index === 0;
   up.addEventListener("click", () => moveSection(page, index, -1));
-  const down = button("下移", "button", "button");
+  const down = withIcon(button("", "icon-button", "button"), "down");
+  down.setAttribute("aria-label", "下移模块");
+  down.title = "下移模块";
   down.disabled = limitedLocked || index === page.sections.length - 1;
   down.addEventListener("click", () => moveSection(page, index, 1));
-  const remove = button("删除", "button danger", "button");
+  const remove = withIcon(button("", "icon-button danger", "button"), "trash");
+  remove.setAttribute("aria-label", "删除模块");
+  remove.title = "删除模块";
   remove.disabled = limitedLocked;
-  remove.addEventListener("click", () => {
+  remove.addEventListener("click", async () => {
+    if (!(await confirmAction({ title: `删除${sectionLabel(section)}模块？`, description: "删除后可在保存前使用撤销恢复。", confirmLabel: "删除模块", destructive: true }))) return;
     rememberConfigChange();
     page.sections.splice(index, 1);
+    state.expandedSections.delete(section.id);
     renderAdminEditor();
   });
-  tools.append(up, down, remove);
-  controls.append(tools);
+  tools.append(up, down, remove, toggle);
+  controls.append(copy, tools);
   return controls;
 }
 
@@ -2126,69 +2038,10 @@ function renderEditableTextSection(section) {
 function renderEditableImageSection(section) {
   const card = element("article", "module-card inline-editor-card image-editor-card");
   const controls = element("div", "admin-row");
-  controls.append(
-    field("图片标题", section.title, (value) => {
-      section.title = value;
-    })
-  );
-  controls.append(
-    selectField(
-      "显示方式",
-      section.display,
-      [
-        ["normal", "正常图片"],
-        ["background", "展示图片"]
-      ],
-      (value) => {
-        section.display = value;
-        renderAdminEditor();
-      }
-    )
-  );
-  card.append(controls);
-  card.append(
-    field("图片说明", section.description, (value) => {
-      section.description = value;
-    })
-  );
-  card.append(
-    field("图片地址", section.src, (value) => {
-      section.src = value;
-    }, "可以粘贴 https 图片地址，也可以上传本地图片。")
-  );
-
-  const uploadRow = element("div", "admin-row");
-  const upload = imageUploadField(section);
-  uploadRow.append(upload);
-  uploadRow.append(
-    selectField(
-      "填充方式",
-      section.fit,
-      [
-        ["cover", "铺满"],
-        ["contain", "完整显示"]
-      ],
-      (value) => {
-        section.fit = value;
-        renderAdminEditor();
-      }
-    )
-  );
-  card.append(uploadRow);
-
+  controls.append(field("图片标题", section.title, value => { section.title = value; }), selectField("显示方式", section.display, [["normal", "正常图片"], ["background", "展示图片"]], value => { section.display = value; renderAdminEditor(); }));
   const meta = element("div", "admin-row");
-  meta.append(
-    field("替代文字", section.alt, (value) => {
-      section.alt = value;
-    })
-  );
-  meta.append(
-    field("图片注释", section.caption, (value) => {
-      section.caption = value;
-    })
-  );
-  card.append(meta);
-  card.append(renderImageSection(section));
+  meta.append(selectField("填充方式", section.fit, [["cover", "铺满"], ["contain", "完整显示"]], value => { section.fit = value; }), field("替代文字", section.alt, value => { section.alt = value; }, "向无法查看图片的访客描述图片内容。"), field("图片注释", section.caption, value => { section.caption = value; }));
+  card.append(controls, field("图片说明", section.description, value => { section.description = value; }), compactImageValueField("模块图片", section.src, value => { section.src = value; }, { hint: "上传图片会自动压缩，也可以填写图片地址。" }), meta);
   return card;
 }
 
@@ -2369,84 +2222,54 @@ function renderEditableArticleSection(section) {
 
 function renderEditableBlogSection(section) {
   const card = element("article", "module-card inline-editor-card blog-editor-card");
-  const row = element("div", "admin-row");
-  row.append(
-    field("博客标题", section.title, (value) => {
-      section.title = value;
-    })
-  );
-  row.append(
-    field("分类（逗号分隔）", (section.categories || []).join(", "), (value) => {
-      section.categories = splitTags(value).slice(0, 20);
-    })
-  );
-  card.append(row);
-  card.append(
-    field("博客说明", section.description, (value) => {
-      section.description = value;
-    })
-  );
-  card.append(
-    field("顶部公告", section.notice, (value) => {
-      section.notice = value;
-    }, "显示在博客模块顶部，可以留空。")
-  );
-
-  const profile = element("div", "admin-row");
-  profile.append(
-    field("作者名称", section.profileName, (value) => {
-      section.profileName = value;
-    })
-  );
-  profile.append(
-    imageValueField("作者头像", section.profileImage, (value) => {
-      section.profileImage = value;
-    })
-  );
-  card.append(profile);
-  card.append(
-    field("作者介绍", section.profileDescription, (value) => {
-      section.profileDescription = value;
-    })
-  );
-
-  const actions = element("div", "section-tools blog-editor-actions");
-  const add = button("发布文章", "button primary", "button");
+  const head = element("div", "blog-editor-heading");
+  const copy = element("div");
+  copy.append(element("h2", "", "文章管理"), element("p", "", `${section.articles.length} 篇文章 · 点击展开编辑，保存后更新到网站。`));
+  const add = withIcon(button("新建文章", "button primary", "button"), "plus");
   add.addEventListener("click", () => {
     rememberConfigChange();
     const now = new Date().toISOString();
-    section.articles.unshift({
-      id: crypto.randomUUID(),
-      title: "新文章",
-      summary: "这里填写文章摘要。",
-      body: "这里填写正文。",
-      bodyHtml: "<p>这里填写正文。</p>",
-      coverImage: "",
-      category: section.categories?.[0] || "随笔",
-      tags: [],
-      authorRole: isLimitedAdmin() ? "limited" : "admin",
-      authorName: isLimitedAdmin() ? "limited" : "admin",
-      createdAt: now,
-      updatedAt: now,
-      featured: false
-    });
+    const article = {
+      id: crypto.randomUUID(), title: "新文章", summary: "", body: "", bodyHtml: "", coverImage: "", category: section.categories?.[0] || "随笔", tags: [],
+      authorRole: isLimitedAdmin() ? "limited" : "admin", authorName: isLimitedAdmin() ? "limited" : "admin", createdAt: now, updatedAt: now, featured: false
+    };
+    section.articles.unshift(article);
+    state.openArticleId = article.id;
     renderAdminEditor();
   });
-  actions.append(add);
-  card.append(actions);
-
+  head.append(copy, add);
+  const search = element("label", "search-field article-admin-search");
+  search.append(icon("search"));
+  const input = document.createElement("input");
+  input.type = "search";
+  input.placeholder = "搜索文章标题或分类";
+  input.setAttribute("aria-label", "搜索文章标题或分类");
+  search.append(input);
   const articles = element("div", "blog-article-editor-list");
-  if (!section.articles.length) {
-    articles.append(element("p", "empty-state", "还没有文章。"));
-  }
-
+  const empty = element("p", "empty-state", section.articles.length ? "没有找到匹配的文章。" : "还没有文章，从第一篇记录开始吧。");
+  empty.hidden = section.articles.length > 0;
   for (const article of section.articles) {
-    articles.append(renderEditableBlogArticle(section, article, articles));
+    const editor = renderEditableBlogArticle(section, article, articles);
+    editor.dataset.searchText = `${article.title} ${article.category}`.toLocaleLowerCase();
+    articles.append(editor);
+    if (article.id === state.openArticleId) editor.open = true;
   }
-
-  card.append(articles, renderBlogSection(section, true));
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLocaleLowerCase();
+    const editors = [...articles.children];
+    for (const editor of editors) editor.hidden = !editor.dataset.searchText.includes(query);
+    empty.hidden = editors.some(editor => !editor.hidden);
+  });
+  const metadata = document.createElement("details");
+  metadata.className = "modern-settings-details blog-editor-metadata";
+  metadata.append(element("summary", "", "博客栏目与作者信息"));
+  const settings = element("div", "modern-details-grid");
+  settings.append(field("博客标题", section.title, value => { section.title = value; }), field("分类（逗号分隔）", (section.categories || []).join(", "), value => { section.categories = splitTags(value).slice(0, 20); }), areaField("博客说明", section.description, value => { section.description = value; }), field("栏目公告", section.notice, value => { section.notice = value; }), field("作者名称", section.profileName, value => { section.profileName = value; }), compactImageValueField("作者头像", section.profileImage, value => { section.profileImage = value; }), areaField("作者介绍", section.profileDescription, value => { section.profileDescription = value; }));
+  metadata.append(settings);
+  card.append(head, search, articles, empty, metadata);
   return card;
 }
+
 
 function renderEditableBlogArticle(section, article, listNode = null) {
   const locked = isLimitedAdmin() && article.authorRole === "admin";
@@ -2501,6 +2324,10 @@ function renderEditableBlogArticle(section, article, listNode = null) {
   }
   let editorBuilt = false;
   item.addEventListener("toggle", () => {
+    if (item.isConnected) {
+      if (item.open) state.openArticleId = article.id;
+      else if (state.openArticleId === article.id) state.openArticleId = "";
+    }
     toggleLabel.textContent = item.open ? "收起" : "展开编辑";
     if (!item.open || editorBuilt) return;
     editorBuilt = true;
@@ -2514,8 +2341,11 @@ function buildBlogArticleEditorBody(section, article, locked) {
   const body = element("div", "blog-article-editor-body");
   const touch = () => {
     article.updatedAt = new Date().toISOString();
-    state.saveStatus = "有未保存修改。";
-    setSaveBarStatus(state.saveStatus);
+    const item = body.closest(".blog-article-editor");
+    const heading = item?.querySelector(".blog-article-editor-heading h3");
+    if (heading) heading.textContent = article.title || "未命名文章";
+    if (item) item.dataset.searchText = `${article.title} ${article.category}`.toLocaleLowerCase();
+    markConfigDirty();
   };
   const row = element("div", "admin-row");
   row.append(
@@ -2563,17 +2393,25 @@ function buildBlogArticleEditorBody(section, article, locked) {
   });
   const remove = button("删除文章", "button danger", "button");
   remove.disabled = locked;
-  remove.addEventListener("click", () => {
-    if (!confirm(`确定删除文章“${article.title || "未命名文章"}”？此操作需要保存配置后才会生效。`)) {
-      return;
-    }
+  remove.addEventListener("click", async () => {
+    if (!(await confirmAction({ title: `删除“${article.title || "未命名文章"}”？`, description: "文章会在保存后从网站移除。保存前可使用撤销恢复。", confirmLabel: "删除文章", destructive: true }))) return;
     rememberConfigChange();
-    section.articles = section.articles.filter((item) => item.id !== article.id);
-    body.closest(".blog-article-editor")?.remove();
-    state.saveStatus = "文章已删除，保存配置后生效。";
-    setSaveBarStatus(state.saveStatus);
+    section.articles = section.articles.filter(item => item.id !== article.id);
+    if (state.openArticleId === article.id) state.openArticleId = "";
+    state.saveStatus = "文章已删除，保存后生效。";
+    renderAdminEditor();
   });
-  tools.append(featured, remove);
+  const order = element("div", "article-order-actions");
+  for (const [delta, name, symbol] of [[-1, "上移文章", "up"], [1, "下移文章", "down"]]) {
+    const move = withIcon(button("", "icon-button", "button"), symbol);
+    move.setAttribute("aria-label", name);
+    move.title = name;
+    const target = section.articles[section.articles.indexOf(article) + delta];
+    move.disabled = locked || !target || (isLimitedAdmin() && target.authorRole === "admin");
+    move.addEventListener("click", () => { state.openArticleId = article.id; reorderBlogArticle(section, article.id, target.id); });
+    order.append(move);
+  }
+  tools.append(featured, order, remove);
   body.append(tools);
   for (const control of body.querySelectorAll("input, textarea, select, button")) {
     if (locked && !control.classList.contains("rich-doc-tool")) control.disabled = true;
@@ -2612,36 +2450,6 @@ function renderEditableCommentsSection(page, section) {
   return card;
 }
 
-function imageUploadField(section) {
-  const wrapper = element("label", "field image-uploader");
-  wrapper.append(element("span", "", "上传图片"));
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.addEventListener("change", async () => {
-    const file = input.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    state.saveStatus = "正在处理图片...";
-    rememberConfigChange();
-    renderAdminEditor();
-
-    try {
-      section.src = await imageFileToDataUrl(file);
-      section.alt = section.alt || file.name.replace(/\.[^.]+$/, "");
-      state.saveStatus = "图片已加入预览，记得保存配置。";
-    } catch (error) {
-      state.saveStatus = error.message;
-    }
-
-    setSaveBarStatus(state.saveStatus);
-  });
-  wrapper.append(input, element("small", "", "会自动压缩到适合放进配置的尺寸。"));
-  return wrapper;
-}
 
 function videoUploadField(section) {
   const wrapper = element("label", "field video-uploader");
@@ -2656,9 +2464,10 @@ function videoUploadField(section) {
       return;
     }
 
-    state.saveStatus = "正在处理视频...";
     rememberConfigChange();
-    renderAdminEditor();
+    state.mediaPending += 1;
+    state.saveStatus = "正在处理视频…";
+    setSaveBarStatus(state.saveStatus, true);
 
     try {
       section.src = await fileToDataUrl(file, "video/");
@@ -2667,6 +2476,8 @@ function videoUploadField(section) {
       state.saveStatus = "视频已加入预览，记得保存配置。";
     } catch (error) {
       state.saveStatus = error.message;
+    } finally {
+      state.mediaPending -= 1;
     }
 
     renderAdminEditor();
@@ -2677,23 +2488,25 @@ function videoUploadField(section) {
 
 function renderSaveBar(selectedItem) {
   const bar = element("div", "save-bar");
+  const status = element("span", "save-status", state.saveStatus || "所有修改已保存");
+  status.setAttribute("role", "status");
   const previewTarget = previewTargetFor(selectedItem);
-  const preview = button(previewTarget.label, "button", "button");
+  const preview = withIcon(button("预览", "button save-preview-button", "button"), "eye");
+  preview.title = previewTarget.label;
   preview.disabled = !previewTarget.url;
-  preview.addEventListener("click", () => {
-    if (previewTarget.url) {
-      window.open(previewTarget.url, "_blank", "noopener,noreferrer");
-    }
-  });
-
-  const save = button("保存配置", "button primary", "button");
+  preview.addEventListener("click", () => { if (previewTarget.url) window.open(previewTarget.url, "_blank", "noopener,noreferrer"); });
+  const save = withIcon(button("保存修改", "button primary", "button"), "check");
   save.dataset.saveButton = "true";
+  save.title = "保存修改（Ctrl / ⌘ + S）";
+  save.disabled = !state.dirty || state.savePending;
   save.addEventListener("click", saveAdminConfig);
-  const undo = button("撤销", "button", "button");
+  const undo = withIcon(button("", "icon-button save-undo-button", "button"), "undo");
   undo.dataset.undoButton = "true";
-  undo.disabled = state.undoStack.length === 0;
+  undo.setAttribute("aria-label", "撤销上一步");
+  undo.title = "撤销上一步";
+  undo.disabled = state.undoStack.length === 0 || state.savePending;
   undo.addEventListener("click", undoAdminChange);
-  bar.append(element("span", "save-status", state.saveStatus), undo, preview, save);
+  bar.append(status, undo, preview, save);
   return bar;
 }
 
@@ -2721,25 +2534,30 @@ function previewTargetFor(selectedItem) {
 }
 
 async function saveAdminConfig() {
-  state.saveStatus = "保存中...";
+  if (state.savePending || state.mediaPending > 0) return;
+  state.savePending = true;
+  state.saveError = false;
+  state.saveStatus = "正在保存…";
   setSaveBarStatus(state.saveStatus, true);
-
+  const focused = document.activeElement;
+  focused?.blur();
   try {
     const payload = await persistConfig(state.config);
     state.undoStack = [];
     state.undoFingerprint = "";
+    state.dirty = false;
+    state.savePending = false;
     ensureAdminSelection();
-    state.saveStatus = payload.noChanges
-      ? "没有需要保存的修改。"
-      : `已保存 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
-    // persistConfig hydrates the saved config into new objects. Re-render so
-    // every editor callback points at the current state instead of stale data.
+    state.saveStatus = payload.noChanges ? "所有修改已保存" : `已保存于 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+    // Rebind controls after persistConfig hydrates the saved config.
     renderAdminEditor();
+    notify(payload.noChanges ? "当前内容已是最新版本。" : "修改已保存，网站内容已更新。");
   } catch (error) {
-    state.saveStatus = error.code === "CONFIG_VERSION_CONFLICT"
-      ? "配置已在其他页面更新，请重新加载后台后再保存。"
-      : error.message;
+    state.savePending = false;
+    state.saveError = true;
+    state.saveStatus = error.code === "CONFIG_VERSION_CONFLICT" ? "其他窗口已更新内容，请重新加载后再保存。" : "保存失败，请重试。";
     setSaveBarStatus(state.saveStatus, false);
+    notify(error.code === "CONFIG_VERSION_CONFLICT" ? state.saveStatus : error.message, { error: true });
   }
 }
 
@@ -2778,6 +2596,8 @@ async function persistConfig(nextConfig) {
 }
 
 function setLoadedConfig(config) {
+  state.dirty = false;
+  state.saveError = false;
   state.config = hydrateConfig(config);
   state.savedConfig = cloneConfig(state.config);
 }
@@ -2795,21 +2615,30 @@ function setSaveBarStatus(message, saving = false) {
   const status = document.querySelector(".save-status");
   const save = document.querySelector("[data-save-button='true']");
   const undo = document.querySelector("[data-undo-button='true']");
+  const content = app.querySelector(".admin-content");
+  const busy = saving || state.savePending || state.mediaPending > 0;
+  app.dataset.saving = String(busy);
+  const menuTrigger = app.querySelector(".mobile-menu-button");
+  if (menuTrigger) menuTrigger.disabled = busy;
+  if (content) content.inert = busy;
+  const sidebar = app.querySelector(".admin-sidebar");
+  if (sidebar) sidebar.inert = busy || (window.matchMedia("(max-width: 860px)").matches && !app.classList.contains("mobile-nav-open"));
   if (status) {
-    status.textContent = message;
+    status.textContent = message || (state.dirty ? "有未保存的修改" : "所有修改已保存");
+    status.dataset.state = busy ? "saving" : state.saveError ? "error" : state.dirty ? "dirty" : "saved";
   }
   if (save) {
-    save.disabled = saving;
-    save.textContent = saving ? "保存中..." : "保存配置";
+    save.disabled = busy || !state.dirty;
+    save.replaceChildren(icon(busy ? "clock" : "check"), document.createTextNode(state.savePending ? "保存中…" : busy ? "处理中…" : "保存修改"));
   }
-  if (undo && !saving) {
-    undo.disabled = state.undoStack.length === 0;
-  }
+  if (undo) undo.disabled = busy || state.undoStack.length === 0;
 }
 
-function markConfigDirty(message = "有未保存修改。") {
+function markConfigDirty(message = "有未保存的修改") {
+  state.dirty = true;
+  state.saveError = false;
   state.saveStatus = message;
-  setSaveBarStatus(state.saveStatus);
+  setSaveBarStatus(state.saveStatus, state.savePending);
 }
 
 function rememberConfigChange() {
@@ -2826,11 +2655,11 @@ function rememberConfigChange() {
     state.undoStack.shift();
   }
 
-  state.saveStatus = "有未保存修改。";
-  setSaveBarStatus(state.saveStatus);
+  markConfigDirty();
 }
 
 function undoAdminChange() {
+  if (state.savePending || state.mediaPending > 0) return;
   const snapshot = state.undoStack.pop();
 
   if (!snapshot) {
@@ -2840,7 +2669,8 @@ function undoAdminChange() {
   state.config = hydrateConfig(snapshot);
   state.undoFingerprint = "";
   ensureAdminSelection();
-  state.saveStatus = "已撤销上一步，记得保存配置。";
+  state.dirty = JSON.stringify(state.config) !== JSON.stringify(state.savedConfig);
+  state.saveStatus = state.dirty ? "已撤销上一步，仍有未保存修改" : "所有修改已保存";
   renderAdminEditor();
 }
 
@@ -2852,84 +2682,66 @@ function trackUndoOnEdit(control) {
       captured = true;
     }
   };
-
-  control.addEventListener("focus", capture);
   control.addEventListener("beforeinput", capture);
-  control.addEventListener("blur", () => {
-    captured = false;
-  });
+  control.addEventListener("input", capture);
+  control.addEventListener("blur", () => { captured = false; });
 }
 
 function renderPublicSite() {
   const slug = getRouteSlug();
   const [pageSlug, articleId = ""] = slug.split("/");
-  const pages = state.config.pages.filter((page) => page.visible);
-  const links = state.config.links.filter((link) => link.visible && normalizeExternalUrl(link.targetUrl));
-  const page = pageSlug ? pages.find((item) => item.slug === pageSlug) : null;
-
+  const pages = state.config.pages.filter(page => page.visible);
+  const links = state.config.links.filter(link => link.visible && normalizeExternalUrl(link.targetUrl));
+  const page = pageSlug ? pages.find(item => item.slug === pageSlug) : null;
   setAppClass("app-shell");
   app.append(renderPublicSidebar(pageSlug, pages, links));
-
-  if (!slug) {
-    renderHome(pages, links);
-    return;
-  }
-
-  if (!page) {
-    renderNotFound(slug);
-    return;
-  }
-
-  if (page.passwordEnabled) {
+  if (!slug) renderHome(pages, links);
+  else if (!page) renderNotFound(slug);
+  else if (page.passwordEnabled) {
     const cachedPage = getUnlockedPage(page.slug);
-
-    if (cachedPage) {
-      renderPage(cachedPage, articleId);
-      return;
-    }
-
-    renderPagePasswordGate(page);
-    return;
-  }
-
-  renderPage(page, articleId);
+    if (cachedPage) renderPage(cachedPage, articleId);
+    else renderPagePasswordGate(page);
+  } else renderPage(page, articleId);
+  mountPublicNavigation();
 }
 
 function renderPublicSidebar(slug, pages, links) {
   const sidebar = element("aside", "sidebar public-sidebar");
+  sidebar.id = "site-navigation";
+  sidebar.setAttribute("aria-label", "网站导航");
+  const brandRow = element("div", "sidebar-brand-row");
   const brand = element("a", "brand public-brand");
   brand.href = "/";
-  brand.append(element("span", "brand-mark", "宽"), textBlock("宽宽的网站", "模块、文章与游戏"));
-  const nav = element("nav", "module-nav");
-  nav.append(navLink("/", "HM", "主页入口", slug ? "所有分页面" : "当前页面", !slug));
-
+  brand.append(element("span", "brand-mark", "宽"), textBlock("宽宽的网站", "A PERSONAL SPACE"));
+  const close = withIcon(button("", "icon-button drawer-close", "button"), "close");
+  close.setAttribute("aria-label", "关闭导航菜单");
+  close.addEventListener("click", () => app.querySelector(".navigation-scrim")?.click());
+  brandRow.append(brand, close);
+  const nav = element("nav", "module-nav public-content-nav");
+  nav.setAttribute("aria-label", "页面与入口");
+  const home = navLink("/", "", "我的首页", "从这里开始", !slug);
+  home.firstChild.replaceWith(icon("home", "nav-ui-icon"));
+  nav.append(home, element("p", "sidebar-section-label", "探索空间"));
   for (const item of publicNavItems(pages, links)) {
+    let destination;
     if (item.type === "page") {
       const page = item.page;
-      nav.append(navLink(`/${page.slug}`, page.entry.sidebarIconText || page.entry.iconText || "PG", page.title, `/${page.slug}`, slug === page.slug, {
-        iconImage: page.entry.sidebarIconImage || page.entry.iconImage
-      }));
+      destination = navLink(`/${page.slug}`, page.entry.sidebarIconText || page.entry.iconText || "PG", sidebarPageTitle(page), page.entry.sidebarDescription || (page.kind === "blog" ? "文章与记录" : page.description || `/${page.slug}`), slug === page.slug, { iconImage: page.entry.sidebarIconImage || page.entry.iconImage });
     } else {
       const link = item.link;
-      nav.append(
-        navLink(
-          normalizeExternalUrl(link.targetUrl),
-          link.iconText || "WEB",
-          link.title,
-          externalLinkSubtitle(link),
-          false,
-          {
-            external: true,
-            iconImage: link.iconImage,
-            fallbackIcon: faviconUrl(link.targetUrl)
-          }
-        )
-      );
+      destination = navLink(normalizeExternalUrl(link.targetUrl), link.iconText || "WEB", link.title, externalLinkSubtitle(link), false, { external: true, iconImage: link.iconImage, fallbackIcon: faviconUrl(link.targetUrl) });
+      destination.append(icon("external", "nav-external-icon"));
     }
+    nav.append(destination);
   }
-
-  nav.append(navLink("/admin", "AD", "管理员", "管理页面和模块", false));
-  sidebar.append(brand, nav);
+  const footer = element("footer", "public-sidebar-footer");
+  const signature = element("div", "sidebar-signature");
+  signature.append(element("span", "signature-dot"), element("span", "", "保持好奇，慢慢积累。"));
+  const admin = element("a", "sidebar-admin-link", "管理网站");
+  admin.href = "/admin";
+  admin.prepend(icon("settings"));
+  footer.append(signature, admin);
+  sidebar.append(brandRow, nav, footer);
   return sidebar;
 }
 
@@ -2950,15 +2762,21 @@ function publicNavItems(pages, links) {
 
 function renderHome(pages, links) {
   document.title = state.config.homeTitle;
-  const main = element("main", "workspace");
-  const header = element("header", "workspace-header");
-  const copy = element("div");
-  copy.append(element("p", "eyebrow", "Home"), element("h1", "", state.config.homeTitle));
-  copy.append(element("p", "lead", state.config.homeDescription));
+  const main = element("main", "workspace home-workspace");
+  const topline = element("div", "public-topline");
+  topline.append(element("span", "", "我的空间"), element("span", "", new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })));
+  const header = element("header", "workspace-header home-hero");
+  const copy = element("div", "home-hero-copy");
+  const greeting = element("p", "home-greeting", "你好，欢迎来到这里");
+  greeting.prepend(element("span", "greeting-dot"));
+  copy.append(greeting, element("h1", "", state.config.homeTitle), element("p", "lead", state.config.homeDescription));
+  const count = publicNavItems(pages, links).length;
+  const heroFoot = element("div", "hero-footnote");
+  heroFoot.append(element("span", "", "记录 · 工具 · 一点乐趣"), element("span", "hero-count", `${String(count).padStart(2, "0")} 个空间入口`));
+  copy.append(heroFoot);
   const homeImage = state.config.homeImage?.trim();
   header.classList.toggle("no-visual", !homeImage);
   header.append(copy);
-
   if (homeImage) {
     const visual = element("figure", "home-visual");
     const image = document.createElement("img");
@@ -2967,54 +2785,100 @@ function renderHome(pages, links) {
     image.decoding = "async";
     image.fetchPriority = "high";
     image.alt = state.config.homeTitle;
-    visual.append(image);
+    const caption = element("figcaption", "", "生活的切片");
+    caption.prepend(icon("image"));
+    visual.append(image, caption);
     header.append(visual);
   }
-
-  main.append(header);
+  main.append(topline, header);
   const announcement = renderHomeAnnouncement();
-
-  if (announcement) {
-    main.append(announcement);
+  if (announcement) main.append(announcement);
+  const explorer = element("section", "home-explorer");
+  const toolbar = element("div", "explorer-toolbar");
+  const title = element("div", "explorer-title");
+  title.append(element("h2", "", "随处逛逛"), element("span", "", "找到你感兴趣的地方"));
+  const search = element("label", "search-field home-search");
+  search.append(icon("search"));
+  const input = document.createElement("input");
+  input.type = "search";
+  input.placeholder = "搜索页面、工具或网站";
+  input.setAttribute("aria-label", "搜索页面、工具或网站");
+  input.value = state.homeSearch;
+  search.append(input);
+  toolbar.append(title, search);
+  const filterRow = element("div", "explorer-filter-row");
+  const filters = element("nav", "entry-filters");
+  filters.setAttribute("aria-label", "入口类型");
+  const filterButtons = [];
+  for (const [value, label] of [["all", "全部"], ["page", "页面与文章"], ["link", "网站与工具"], ["game", "小游戏"]]) {
+    const tab = button(label, "entry-filter-button", "button");
+    tab.dataset.filter = value;
+    tab.addEventListener("click", () => { state.homeFilter = value; updateEntries(); });
+    filters.append(tab);
+    filterButtons.push(tab);
   }
-
-  main.append(
-    renderVisitorStatusStrip()
-  );
-  scheduleVisitorSummary();
-
+  filterRow.append(filters, renderHomeViewControl());
   const grid = element("section", `module-grid home-entry-grid layout-${state.homeEntryLayout}`);
+  grid.setAttribute("aria-label", "网站入口");
+  const cards = [];
   for (const item of publicNavItems(pages, links)) {
-    grid.append(item.type === "page" ? renderPageEntry(item.page) : renderExternalLinkEntry(item.link));
+    const card = item.type === "page" ? renderPageEntry(item.page) : renderExternalLinkEntry(item.link);
+    const value = item.page || item.link;
+    card.dataset.entryKind = item.type === "link" && [cubeCityLinkId, llrMarioRunLinkId].includes(value.id) ? "game" : item.type;
+    card.dataset.searchText = `${value.title} ${value.description} ${value.entry?.title || ""} ${value.slug || value.targetUrl || ""}`.normalize("NFKC").toLocaleLowerCase();
+    cards.push(card);
+    grid.append(card);
   }
-  main.append(grid);
-  main.append(renderHomeViewControl());
+  const empty = element("div", "search-empty-state");
+  empty.append(icon("search"), element("h3", "", "暂时没有找到"), element("p", "", "换个关键词，或者看看全部入口。"));
+  const reset = button("查看全部入口", "button", "button");
+  reset.addEventListener("click", () => { input.value = ""; state.homeSearch = ""; state.homeFilter = "all"; updateEntries(); input.focus(); });
+  empty.append(reset);
+  const result = element("p", "explorer-result-count");
+  result.setAttribute("aria-live", "polite");
+  function updateEntries() {
+    state.homeSearch = input.value;
+    const query = input.value.trim().normalize("NFKC").toLocaleLowerCase();
+    let visible = 0;
+    for (const card of cards) {
+      card.hidden = !(state.homeFilter === "all" || card.dataset.entryKind === state.homeFilter) || !card.dataset.searchText.includes(query);
+      if (!card.hidden) visible += 1;
+    }
+    for (const tab of filterButtons) {
+      const active = tab.dataset.filter === state.homeFilter;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-pressed", String(active));
+    }
+    empty.hidden = visible !== 0;
+    result.textContent = query ? `找到 ${visible} 个入口` : `${visible} 个入口，随时出发。`;
+  }
+  input.addEventListener("input", updateEntries);
+  input.addEventListener("keydown", event => { if (event.key === "Escape") { input.value = ""; updateEntries(); } });
+  updateEntries();
+  explorer.append(toolbar, filterRow, grid, empty, result);
+  const footer = element("footer", "site-footer");
+  footer.append(element("span", "", "宽宽的个人空间"), element("span", "", "分享发现，也收藏日常。"));
+  const connection = document.createElement("details");
+  connection.className = "connection-details";
+  const summary = element("summary", "", "当前连接与访问统计");
+  summary.prepend(icon("info"));
+  connection.append(summary, renderVisitorStatusStrip());
+  main.append(explorer, footer, connection);
+  scheduleVisitorSummary();
   app.append(main);
 }
 
 function renderHomeAnnouncement() {
   const announcement = state.config.announcement;
-
-  if (!announcement.enabled || !announcement.text.trim()) {
-    return null;
-  }
-
+  if (!announcement.enabled || !announcement.text.trim()) return null;
   const banner = element("section", "home-announcement");
-  const textLength = announcement.text.trim().length;
-  banner.style.setProperty("--announcement-speed", `${Math.max(8, Math.min(24, textLength * 0.35))}s`);
-
-  const label = element("span", "announcement-label", announcement.title || "公告");
-  const track = element("div", "announcement-track");
-  track.append(element("span", "announcement-text", announcement.text));
-  const close = button("关闭", "announcement-close", "button");
+  banner.append(icon("message"), element("span", "announcement-label", announcement.title || "公告"), element("p", "announcement-copy", announcement.text));
+  const close = withIcon(button("", "icon-button announcement-close", "button"), "close");
+  close.setAttribute("aria-label", "关闭公告");
   close.addEventListener("click", () => banner.remove());
-  banner.append(label, track, close);
-
+  banner.append(close);
   const seconds = Number(announcement.durationSeconds);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    window.setTimeout(() => banner.remove(), seconds * 1000);
-  }
-
+  if (Number.isFinite(seconds) && seconds > 0) window.setTimeout(() => banner.remove(), seconds * 1000);
   return banner;
 }
 
@@ -3058,7 +2922,7 @@ function renderPage(page, articleId = "") {
     const header = element("header", "workspace-header compact");
     const copy = element("div");
     copy.append(element("p", "eyebrow", `/${page.slug}`), element("h1", "", page.title));
-    copy.append(element("p", "lead", page.description));
+    if (page.description && page.description !== "在这里填写页面说明。") copy.append(element("p", "lead", page.description));
     header.append(copy);
     main.append(header);
     main.append(renderPageStatusStrip(page, columnMode));
@@ -3070,7 +2934,7 @@ function renderPage(page, articleId = "") {
   }
 
   if (renderedSections.length === 0 && !hasBottomComments) {
-    grid.append(element("p", "empty-state", "这个分页面还没有模块。可以进入 /admin 添加。"));
+    grid.append(element("p", "empty-state", "这里的内容正在整理中，过一阵再来看看吧。"));
   }
 
   if (renderedSections.length > 0 || !hasBottomComments) {
@@ -3244,56 +3108,63 @@ function resetModuleCardState(card) {
 }
 
 function renderHomeViewControl() {
-  const control = element("div", "floating-view-control");
-  control.append(element("span", "", "主页入口"));
-  const select = document.createElement("select");
-  select.className = "input";
-  for (const [value, label] of [
-    ["one", "一个一行"],
-    ["two", "两个一行"]
-  ]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    select.append(option);
+  const control = element("div", "floating-view-control entry-view-control");
+  control.setAttribute("role", "group");
+  control.setAttribute("aria-label", "入口展示方式");
+  for (const [value, label, symbol] of [["two", "卡片视图", "grid"], ["one", "列表视图", "list"]]) {
+    const option = withIcon(button("", "icon-button view-option", "button"), symbol);
+    option.title = label;
+    option.setAttribute("aria-label", label);
+    option.setAttribute("aria-pressed", String(state.homeEntryLayout === value));
+    option.classList.toggle("is-active", state.homeEntryLayout === value);
+    option.addEventListener("click", () => {
+      state.homeEntryLayout = value;
+      localStorage.setItem(homeLayoutKey, value);
+      const grid = app.querySelector(".home-entry-grid");
+      grid.classList.remove("layout-one", "layout-two");
+      grid.classList.add(`layout-${value}`);
+      for (const button of control.querySelectorAll("button")) {
+        const active = button === option;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      }
+    });
+    control.append(option);
   }
-  select.value = state.homeEntryLayout;
-  select.addEventListener("change", () => {
-    state.homeEntryLayout = select.value;
-    localStorage.setItem(homeLayoutKey, state.homeEntryLayout);
-    renderPublicSite();
-  });
-  control.append(select);
   return control;
 }
 
 function renderPagePasswordGate(page) {
-  document.title = "需要密码";
+  document.title = "需要访问密码 · 宽宽的网站";
   const main = element("main", "workspace page-password-workspace");
-  const panel = element("section", "login-panel page-password-panel");
-  const brand = element("div", "brand");
-  brand.append(mark(page.entry?.iconText || "PG"), textBlock(page.entry?.title || page.title || "受保护分页面", "请输入该分页面密码"));
-  const form = element("form", "login-form");
+  const panel = element("section", "page-password-panel");
+  const lock = element("span", "page-access-lock");
+  lock.append(icon("lock"));
+  panel.append(lock, element("p", "eyebrow", "PRIVATE SPACE"), element("h1", "", page.entry?.title || page.title || "受保护的页面"), element("p", "page-access-description", "这个页面设有访问密码，验证后就可以继续浏览。"));
+  const form = element("form", "page-access-form");
+  const label = element("label", "field");
+  label.append(element("span", "", "页面访问密码"));
   const input = document.createElement("input");
   input.className = "input";
   input.type = "password";
-  input.placeholder = "分页面密码";
+  input.placeholder = "输入页面访问密码";
   input.autocomplete = "current-password";
   input.required = true;
-  const submit = button("进入分页面", "button primary", "submit");
+  const submit = withIcon(button("解锁并进入", "button primary", "submit"), "arrow");
   const feedback = element("p", "form-error");
-  form.append(input, submit, feedback);
-  form.addEventListener("submit", async (event) => {
+  feedback.id = "page-access-feedback";
+  feedback.setAttribute("role", "alert");
+  input.setAttribute("aria-describedby", feedback.id);
+  label.append(input);
+  form.append(label, feedback, submit);
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     submit.disabled = true;
-    submit.textContent = "验证中";
+    submit.textContent = "正在验证…";
     feedback.textContent = "";
-
+    input.removeAttribute("aria-invalid");
     try {
-      const payload = await api.postJson("/api/page-access", {
-        slug: page.slug,
-        password: input.value
-      });
+      const payload = await api.postJson("/api/page-access", { slug: page.slug, password: input.value });
       const fullPage = hydratePage(payload.page);
       rememberUnlockedPage(fullPage);
       replaceConfigPage(fullPage);
@@ -3302,11 +3173,16 @@ function renderPagePasswordGate(page) {
       if (fullPage.dailyBackgroundEnabled) scheduleDailyBackground(fullPage);
     } catch (error) {
       feedback.textContent = error.message;
+      input.setAttribute("aria-invalid", "true");
       submit.disabled = false;
-      submit.textContent = "进入分页面";
+      submit.replaceChildren(icon("arrow"), document.createTextNode("解锁并进入"));
+      input.focus();
     }
   });
-  panel.append(brand, form);
+  const back = element("a", "login-back-link", "返回首页");
+  back.href = "/";
+  back.prepend(icon("home"));
+  panel.append(form, back);
   main.append(panel);
   app.append(main);
 }
@@ -3353,36 +3229,23 @@ function replaceConfigPage(page) {
 }
 
 function renderPageStatusStrip(page, columns) {
-  const strip = element("section", "status-strip page-status-strip");
-  const viewItem = element("div", "status-control-item");
-  viewItem.append(element("span", "metric-label", "显示几个在这行"));
+  const strip = element("section", "page-toolbar");
+  strip.append(element("span", "page-content-count", String(countPageModules(page)) + " 项内容"));
+  const control = element("label", "page-layout-control");
+  control.append(element("span", "", "排列方式"));
   const select = document.createElement("select");
   select.className = "input";
-  const defaultOption = document.createElement("option");
-  defaultOption.value = "default";
-  defaultOption.textContent = "默认选项";
-  select.append(defaultOption);
-  for (const value of [1, 2, 3, 4, 5]) {
+  select.setAttribute("aria-label", "排列方式");
+  for (const [value, label] of [["default", "自动布局"], ...[1, 2, 3, 4, 5].map(value => [String(value), value + " 列"])]) {
     const option = document.createElement("option");
-    option.value = String(value);
-    option.textContent = `${value} 个`;
+    option.value = value;
+    option.textContent = label;
     select.append(option);
   }
   select.value = columns === "default" ? "default" : String(columns);
-  select.addEventListener("change", () => {
-    setPageColumnMode(page.slug, select.value);
-    renderPublicSite();
-  });
-  viewItem.append(select);
-  strip.append(viewItem);
-
-  const countItem = element("div");
-  countItem.append(element("span", "metric-label", "模块数量"), element("strong", "", String(countPageModules(page))));
-  strip.append(countItem);
-
-  const slugItem = element("div");
-  slugItem.append(element("span", "metric-label", "网址后缀"), element("strong", "", `/${page.slug}`));
-  strip.append(slugItem);
+  select.addEventListener("change", () => { setPageColumnMode(page.slug, select.value); renderPublicSite(); });
+  control.append(select);
+  strip.append(control);
   return strip;
 }
 
@@ -3917,39 +3780,14 @@ function scheduleVisitorSummary() {
 }
 
 function renderPageEntry(page) {
-  const card = element("article", "module-card entry-card");
-  applyEntryCardStyle(card, page.entry.backgroundImage);
-  const header = element("header", "module-card-header");
-  header.append(entryMark(page.entry), textBlock(page.entry.title || page.title, page.entry.description || page.description));
-
-  const link = document.createElement("a");
-  link.className = "button primary";
-  link.href = `/${page.slug}`;
-  link.textContent = "进入";
-
-  card.append(header, link);
-  return card;
+  return renderDestinationCard({ title: page.entry.title || page.title, description: page.entry.description || page.description, href: `/${page.slug}`, image: page.entry.backgroundImage, marker: entryMark(page.entry), kind: page.kind === "blog" ? "博客" : "页面", meta: `/${page.slug}`, locked: page.passwordEnabled });
 }
 
 function renderExternalLinkEntry(link) {
-  const card = element("article", "module-card entry-card external-entry-card");
-  applyEntryCardStyle(card, link.backgroundImage);
   const targetUrl = normalizeExternalUrl(link.targetUrl);
-  const header = element("header", "module-card-header");
-  header.append(linkMark(link), textBlock(link.title || "外部网站", link.description || externalLinkSubtitle(link)));
-
-  const anchor = document.createElement("a");
-  anchor.className = "button primary";
-  anchor.href = targetUrl || "#";
-  anchor.rel = "noreferrer";
-  anchor.textContent = targetUrl ? "前往" : "未设置网址";
-
-  if (!targetUrl) {
-    anchor.setAttribute("aria-disabled", "true");
-    anchor.addEventListener("click", (event) => event.preventDefault());
-  }
-
-  card.append(header, anchor);
+  const game = [cubeCityLinkId, llrMarioRunLinkId].includes(link.id);
+  const card = renderDestinationCard({ title: link.title || "网站入口", description: link.description || externalLinkSubtitle(link), href: targetUrl, image: link.backgroundImage, marker: linkMark(link), kind: game ? "小游戏" : "网站", meta: game ? "休息一下，再出发" : externalLinkSubtitle(link) });
+  card.classList.add("external-entry-card");
   return card;
 }
 
@@ -4171,11 +4009,11 @@ function renderBlogPage(page, articleId = "") {
   const categories = blog.categories?.length ? blog.categories : [...new Set(articles.map((article) => article.category).filter(Boolean))];
   const filterKey = `cloudflare-modular-site.blog-filter.${page.slug}`;
   const storedFilter = localStorage.getItem(filterKey);
-  const activeFilter = storedFilter === "更多" ? "全部" : storedFilter || "全部";
+  const activeFilter = ["全部", "推荐", ...categories].includes(storedFilter) ? storedFilter : "全部";
   const filteredArticles = filterBlogArticles(articles, activeFilter);
 
   const nav = element("header", "blog-page-nav");
-  nav.append(element("strong", "", `${page.title || "BLOG"} | BLOG`));
+  nav.append(element("strong", "", "文字与记录 · WRITING SPACE"));
   main.append(nav);
 
   if (blog.notice) {
@@ -4186,8 +4024,8 @@ function renderBlogPage(page, articleId = "") {
 
   const hero = element("section", "blog-page-hero");
   const intro = element("article", "blog-page-intro");
-  intro.append(element("h1", "", blog.description || page.description || "收录开源，好用的互联网项目"));
-  intro.append(element("p", "", page.slug.toUpperCase()));
+  intro.append(element("p", "eyebrow", "NOTES & DISCOVERIES"), element("h1", "", page.title || blog.title || "博客"));
+  intro.append(element("p", "", blog.description || page.description || "记录日常，分享值得收藏的发现。"));
   const quick = element("div", "blog-quick-links");
   for (const label of categories.slice(0, 4)) {
     quick.append(element("span", "", label));
@@ -4209,12 +4047,17 @@ function renderBlogPage(page, articleId = "") {
   main.append(tabs);
 
   if (isAdminSession()) {
-    main.append(renderBlogQuickPublisher(page, blog));
+    const publisher = document.createElement("details");
+    publisher.className = "modern-settings-details quick-publisher-disclosure";
+    publisher.append(element("summary", "", "管理员快捷发布"), renderBlogQuickPublisher(page, blog));
+    main.append(publisher);
+  } else {
+    main.append(renderPublicBlogPublisher(page, blog));
   }
 
   const list = element("section", "blog-page-articles");
   if (!articles.length) {
-    list.append(element("p", "empty-state", "还没有发布文章。管理员进入后台后可以发布第一篇。"));
+    list.append(element("p", "empty-state", "还没有发布文章。欢迎写下第一篇分享。"));
   } else if (!filteredArticles.length) {
     list.append(element("p", "empty-state", "这个分类下还没有文章。"));
   } else {
@@ -4270,7 +4113,11 @@ function renderBlogListItem(page, blog, article) {
 
   const content = element("div", "blog-list-content");
   const meta = element("div", "blog-list-meta");
-  meta.append(element("span", "", article.category || "文章"), element("span", "", formatDateTime(article.createdAt)));
+  meta.append(
+    element("span", "", article.category || "文章"),
+    element("span", "", article.authorName || (article.authorRole === "public" ? "匿名" : "站长")),
+    element("span", "", formatDateTime(article.createdAt))
+  );
   const title = document.createElement("a");
   title.href = `/${page.slug}/${article.id}`;
   title.textContent = article.title || "未命名文章";
@@ -4329,6 +4176,12 @@ function renderBlogArticlePage(page, blog, article, articles) {
 
   document.title = `${article.title} - ${page.title}`;
   const main = element("main", "workspace blog-article-workspace");
+  const breadcrumb = element("nav", "article-breadcrumb");
+  breadcrumb.setAttribute("aria-label", "文章位置");
+  const backHome = element("a", "", "首页"); backHome.href = "/";
+  const backBlog = element("a", "", page.title); backBlog.href = `/${page.slug}`;
+  breadcrumb.append(backHome, icon("chevron"), backBlog, icon("chevron"), element("span", "", "文章"));
+  main.append(breadcrumb);
   const hero = element("header", "blog-article-hero");
   const tags = element("div", "blog-list-tags");
   tags.append(element("span", "", article.category || "文章"));
@@ -4336,6 +4189,11 @@ function renderBlogArticlePage(page, blog, article, articles) {
     tags.append(element("span", "", `#${tag}`));
   }
   hero.append(tags, element("h1", "", article.title || "未命名文章"), renderArticleAuthorLine(blog, article));
+  const readerTools = element("div", "article-reader-tools");
+  readerTools.append(element("span", "", `约 ${Math.max(1, Math.ceil((article.body || htmlToPlainText(article.bodyHtml || "")).length / 450))} 分钟阅读`));
+  const copyLink = withIcon(button("复制链接", "button article-copy-link", "button"), "link");
+  copyLink.addEventListener("click", async () => { try { await navigator.clipboard.writeText(`${location.origin}/${page.slug}/${article.id}`); notify("文章链接已复制。"); } catch { notify("复制失败，可以从地址栏复制链接。", { error: true }); } });
+  readerTools.append(copyLink); hero.append(readerTools);
   main.append(hero);
 
   const layout = element("section", "blog-article-layout");
@@ -4379,6 +4237,12 @@ function renderBlogArticlePage(page, blog, article, articles) {
     content.prepend(actions);
   }
 
+  const headings = [...content.querySelectorAll(".blog-article-rich-body h2, .blog-article-rich-body h3")];
+  if (headings.length > 1) {
+    const toc = element("nav", "article-toc"); toc.setAttribute("aria-label", "文章目录"); toc.append(element("h3", "", "本文目录"));
+    headings.forEach((heading, index) => { heading.id ||= `article-heading-${index}`; const link = element("a", "", heading.textContent); link.href = `#${heading.id}`; toc.append(link); });
+    aside.prepend(toc);
+  }
   layout.append(aside, content);
   const comments = renderCommentsSection(
     { slug: `${page.slug}/${article.id}` },
@@ -4454,34 +4318,46 @@ function renderArticleAuthorLine(blog, article) {
     avatar.decoding = "async";
     avatar.alt = blog.profileName || "作者头像";
   }
+  const authorName = article.authorName || blog.profileName || "匿名";
   line.append(
-    avatar || mark((blog.profileName || "站长").slice(0, 2).toUpperCase()),
-    textBlock(`${blog.profileName || article.authorName || "站长"} · ${formatDateTime(article.createdAt)}`, blog.profileDescription || "")
+    avatar || mark(authorName.slice(0, 2).toUpperCase()),
+    textBlock(`${authorName} · ${formatDateTime(article.createdAt)}`, article.authorRole === "public" ? "访客投稿" : blog.profileDescription || "")
   );
   return line;
 }
 
 async function deleteBlogArticle(page, articleId) {
-  if (!confirm("确定删除这篇文章？")) {
+  const article = page.blog?.articles?.find((item) => item.id === articleId);
+  const confirmed = await confirmAction({
+    title: `删除“${article?.title || "未命名文章"}”？`,
+    description: "这篇文章会立即从公开博客中移除。",
+    confirmLabel: "删除文章",
+    destructive: true
+  });
+  if (!confirmed) {
     return;
   }
 
-  const config = hydrateConfig(state.config);
-  const targetPage = config.pages.find((item) => item.id === page.id);
-  if (!targetPage) {
-    return;
+  const params = new URLSearchParams({ slug: page.slug, id: articleId });
+  if (state.config.updatedAt) {
+    params.set("baseUpdatedAt", state.config.updatedAt);
   }
-  targetPage.blog = hydrateBlogSection(targetPage.blog);
-  targetPage.blog.articles = targetPage.blog.articles.filter((article) => article.id !== articleId);
 
   try {
-    await persistConfig(config);
+    await api.deleteJson(`/api/admin/blog/articles?${params.toString()}`, true);
     if (getRouteSlug() === `${page.slug}/${articleId}`) {
       window.history.replaceState(null, "", `/${page.slug}`);
     }
+    state.config = hydrateConfig(await loadPublicConfig());
+    state.savedConfig = cloneConfig(state.config);
     renderPublicSite();
+    notify("文章已删除。", { error: false });
   } catch (error) {
-    alert(error.message);
+    if (error.code === "CONFIG_VERSION_CONFLICT") {
+      state.config = hydrateConfig(await loadPublicConfig());
+      renderPublicSite();
+    }
+    notify(error.message, { error: true });
   }
 }
 
@@ -4538,6 +4414,79 @@ function filterBlogArticles(articles, filter) {
   }
 
   return articles.filter((article) => article.category === filter);
+}
+
+function renderPublicBlogPublisher(page, blog) {
+  const panel = element("section", "blog-publisher-panel public-blog-publisher");
+  const head = element("div", "blog-publisher-head");
+  const copy = element("div");
+  copy.append(
+    element("p", "eyebrow", "OPEN PUBLISHING"),
+    element("h2", "", "分享一篇文章"),
+    element("p", "", "无需登录，写下署名、标题和正文，发布后会立即出现在博客里。管理员可以删除不合适的文章。")
+  );
+  head.append(copy);
+
+  const form = element("form", "blog-publisher-form");
+  const author = publisherInput("署名", "input", "例如：小明");
+  author.control.autocomplete = "nickname";
+  const title = publisherInput("文章标题", "input", "给这篇文章起个清楚的标题");
+  title.control.maxLength = 120;
+  const category = publisherInput("分类", "input", blog.categories?.[0] || "随笔");
+  category.control.maxLength = 30;
+  const tags = publisherInput("标签", "input", "可选，用逗号分隔");
+  const cover = publisherInput("封面图片地址", "input", "可选，填写 https:// 图片地址");
+  const summary = publisherInput("简介", "textarea", "可选，用一两句话介绍文章");
+  const body = publisherInput("正文", "textarea", "写下你想分享的内容");
+  body.control.rows = 11;
+  body.control.maxLength = 16_000;
+  const submit = button("公开发布", "button primary", "submit");
+  const feedback = element("p", "form-hint");
+
+  const grid = element("div", "blog-publisher-grid");
+  grid.append(author.field, title.field, category.field, tags.field, cover.field, summary.field, body.field);
+  const actions = element("div", "blog-publisher-actions");
+  actions.append(submit, feedback);
+  form.append(grid, actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const articleTitle = title.control.value.trim();
+    const articleBody = body.control.value.trim();
+    if (!articleTitle || !articleBody) {
+      feedback.textContent = "标题和正文不能为空。";
+      (articleTitle ? body.control : title.control).focus();
+      return;
+    }
+
+    submit.disabled = true;
+    submit.textContent = "发布中…";
+    feedback.textContent = "正在发布文章…";
+
+    try {
+      await api.postJson("/api/blog/articles", {
+        slug: page.slug,
+        authorName: author.control.value.trim(),
+        title: articleTitle,
+        category: category.control.value.trim(),
+        tags: tags.control.value,
+        coverImage: cover.control.value.trim(),
+        summary: summary.control.value.trim(),
+        body: articleBody
+      });
+      state.config = hydrateConfig(await loadPublicConfig());
+      state.savedConfig = cloneConfig(state.config);
+      notify("文章已公开发布。", { error: false });
+      renderPublicSite();
+    } catch (error) {
+      feedback.textContent = error.message;
+      submit.disabled = false;
+      submit.textContent = "公开发布";
+    }
+  });
+
+  panel.append(head, form);
+  return panel;
 }
 
 function renderBlogQuickPublisher(page, blog) {
@@ -4711,6 +4660,10 @@ function createRichTextEditor({ html = "", placeholder = "", disabled = false, o
   const editor = element("div", "rich-doc-page");
   const commandTools = [];
   editor.contentEditable = disabled ? "false" : "true";
+  editor.setAttribute("role", "textbox");
+  editor.setAttribute("aria-label", "正文");
+  editor.setAttribute("aria-multiline", "true");
+  if (disabled) editor.setAttribute("aria-readonly", "true");
   editor.dataset.placeholder = placeholder;
   editor.innerHTML = normalizeEditorHtml(html);
 
@@ -4824,12 +4777,14 @@ function createRichTextEditor({ html = "", placeholder = "", disabled = false, o
     editor.addEventListener("keyup", saveSelection);
     editor.addEventListener("mouseup", saveSelection);
     editor.addEventListener("focus", saveSelection);
-    document.addEventListener("selectionchange", () => {
+    const onSelectionChange = () => {
       const selection = window.getSelection();
       if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
         saveSelection();
       }
-    });
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    state.renderCleanups.push(() => document.removeEventListener("selectionchange", onSelectionChange));
     editor.addEventListener("paste", async (event) => {
       const files = clipboardFiles(event.clipboardData);
       if (!files.length) {
@@ -5763,6 +5718,7 @@ function hydrateSection(section) {
 
 function hydrateBlogArticle(article) {
   const now = new Date().toISOString();
+  const authorRole = article?.authorRole === "admin" ? "admin" : article?.authorRole === "public" ? "public" : "limited";
   return {
     id: article?.id || crypto.randomUUID(),
     title: article?.title || "未命名文章",
@@ -5772,8 +5728,8 @@ function hydrateBlogArticle(article) {
     coverImage: article?.coverImage || "",
     category: article?.category || "随笔",
     tags: Array.isArray(article?.tags) ? article.tags : splitTags(article?.tags || ""),
-    authorRole: article?.authorRole === "admin" ? "admin" : "limited",
-    authorName: article?.authorName || (article?.authorRole === "admin" ? "admin" : "limited"),
+    authorRole,
+    authorName: article?.authorName || (authorRole === "admin" ? "admin" : authorRole === "public" ? "匿名" : "limited"),
     createdAt: article?.createdAt || now,
     updatedAt: article?.updatedAt || article?.createdAt || now,
     featured: Boolean(article?.featured)
@@ -6198,22 +6154,24 @@ function moveSectionTo(page, index, nextIndex) {
   renderAdminEditor();
 }
 
-function deletePage(page) {
+async function deletePage(page) {
+  if (isLimitedAdmin()) return;
   if (state.config.pages.length <= 1) {
-    state.saveStatus = "至少保留一个分页面。";
-    renderAdminEditor();
+    notify("至少需要保留一个分页面。", { error: true });
     return;
   }
-
-  if (confirm(`确定删除“${page.title}”？`)) {
-    rememberConfigChange();
-    state.config.pages = state.config.pages.filter((item) => item.id !== page.id);
-    removeNavOrder(`page:${page.id}`);
-    state.selectedPageId = state.config.pages[0]?.id || "";
-    state.expandedSettings = "";
-    renderAdminEditor();
-  }
+  const yes = await confirmAction({ title: `删除“${page.title}”？`, description: "页面及其内容会在保存后从网站移除。保存前仍可使用撤销恢复。", confirmLabel: "删除页面", destructive: true });
+  if (!yes) return;
+  rememberConfigChange();
+  state.config.pages = state.config.pages.filter(item => item.id !== page.id);
+  removeNavOrder(`page:${page.id}`);
+  state.selectedPageId = state.config.pages[0]?.id || "";
+  state.adminTab = "content";
+  state.expandedSettings = "";
+  renderAdminEditor();
+  notify("页面已移除，保存后生效。");
 }
+
 
 function reorderPageById(sourceId, targetId) {
   if (!sourceId || !targetId || sourceId === targetId || isLimitedAdmin()) {
@@ -6424,18 +6382,19 @@ function reorderBlogArticle(section, sourceId, targetId) {
   renderAdminEditor();
 }
 
-function deleteExternalLink(link) {
-  if (confirm(`确定删除“${link.title}”？`)) {
-    rememberConfigChange();
-    state.config.links = state.config.links.filter((item) => item.id !== link.id);
-    removeNavOrder(`link:${link.id}`);
-    state.selectedItemType = "page";
-    state.selectedPageId = state.config.pages[0]?.id || "";
-    state.selectedLinkId = state.config.links[0]?.id || "";
-    renderAdminEditor();
-  }
+async function deleteExternalLink(link) {
+  if (isLimitedAdmin()) return;
+  const yes = await confirmAction({ title: `删除“${link.title}”入口？`, description: "入口会在保存后从首页与导航移除。保存前可使用撤销恢复。", confirmLabel: "删除入口", destructive: true });
+  if (!yes) return;
+  rememberConfigChange();
+  state.config.links = state.config.links.filter(item => item.id !== link.id);
+  removeNavOrder(`link:${link.id}`);
+  state.selectedItemType = "home";
+  state.adminTab = "content";
+  state.selectedLinkId = state.config.links[0]?.id || "";
+  renderAdminEditor();
+  notify("入口已移除，保存后生效。");
 }
-
 function sectionLabel(section) {
   if (section.type === "system") {
     return state.modules.find((module) => module.id === section.moduleId)?.name || "系统模块";
@@ -6504,7 +6463,10 @@ function field(label, value, onInput, hint = "", options = {}) {
   const wrapper = element("label", "field");
   wrapper.append(element("span", "", label));
   const input = document.createElement("input");
+  input.setAttribute("aria-label", label);
   input.className = "input";
+  input.type = options.type || "text";
+  if (options.autocomplete) input.autocomplete = options.autocomplete;
   input.value = value || "";
   if (Number.isInteger(options.maxLength) && options.maxLength > 0) {
     input.maxLength = options.maxLength;
@@ -6518,6 +6480,7 @@ function field(label, value, onInput, hint = "", options = {}) {
       input.value = nextValue;
     }
     onInput(nextValue);
+    markConfigDirty();
   });
   wrapper.append(input);
 
@@ -6532,11 +6495,13 @@ function sidebarField(label, value, onInput, hint = "", disabled = false) {
   const wrapper = element("label", "sidebar-field");
   wrapper.append(element("span", "", label));
   const input = document.createElement("input");
+  input.setAttribute("aria-label", label);
   input.value = value || "";
   input.disabled = disabled;
   trackUndoOnEdit(input);
   input.addEventListener("input", () => {
     onInput(input.value);
+    markConfigDirty();
   });
   wrapper.append(input);
   if (hint) wrapper.append(element("small", "", hint));
@@ -6547,11 +6512,13 @@ function sidebarAreaField(label, value, onInput, disabled = false) {
   const wrapper = element("label", "sidebar-field");
   wrapper.append(element("span", "", label));
   const textarea = document.createElement("textarea");
+  textarea.setAttribute("aria-label", label);
   textarea.value = value || "";
   textarea.disabled = disabled;
   trackUndoOnEdit(textarea);
   textarea.addEventListener("input", () => {
     onInput(textarea.value);
+    markConfigDirty();
   });
   wrapper.append(textarea);
   return wrapper;
@@ -6561,11 +6528,13 @@ function areaField(label, value, onInput, hint = "") {
   const wrapper = element("label", "field");
   wrapper.append(element("span", "", label));
   const textarea = document.createElement("textarea");
+  textarea.setAttribute("aria-label", label);
   textarea.className = "textarea";
   textarea.value = value || "";
   trackUndoOnEdit(textarea);
   textarea.addEventListener("input", () => {
     onInput(textarea.value);
+    markConfigDirty();
   });
   wrapper.append(textarea);
   if (hint) {
@@ -6578,6 +6547,7 @@ function selectField(label, value, options, onChange) {
   const wrapper = element("label", "field");
   wrapper.append(element("span", "", label));
   const select = document.createElement("select");
+  select.setAttribute("aria-label", label);
   select.className = "input";
 
   for (const [optionValue, optionLabel] of options) {
@@ -6600,6 +6570,7 @@ function numberField(label, value, min, max, step, onChange) {
   const wrapper = element("label", "field");
   wrapper.append(element("span", "", label));
   const input = document.createElement("input");
+  input.setAttribute("aria-label", label);
   input.className = "input";
   input.type = "number";
   input.min = String(min);
@@ -6634,6 +6605,7 @@ function compactTextField(label, value, onInput, hint = "") {
   const wrapper = element("label", "field compact-field");
   wrapper.append(element("span", "", label));
   const input = document.createElement("input");
+  input.setAttribute("aria-label", label);
   input.className = "input";
   input.value = value || "";
   trackUndoOnEdit(input);
@@ -6650,6 +6622,7 @@ function compactAreaField(label, value, onInput, hint = "") {
   const wrapper = element("label", "field compact-field");
   wrapper.append(element("span", "", label));
   const textarea = document.createElement("textarea");
+  textarea.setAttribute("aria-label", label);
   textarea.className = "textarea";
   textarea.value = value || "";
   textarea.rows = 3;
@@ -6670,6 +6643,7 @@ function compactImageValueField(label, value, onChange, options = {}) {
   const paste = document.createElement("input");
   paste.className = "input compact-image-url";
   paste.placeholder = "可选：粘贴图片地址后回车";
+  paste.setAttribute("aria-label", `${label}地址`);
   paste.value = value && !value.startsWith("data:") ? value : "";
 
   const applyValue = (nextValue, message = "有未保存修改。") => {
@@ -6700,7 +6674,8 @@ function compactImageValueField(label, value, onChange, options = {}) {
     if (!file) return;
 
     rememberConfigChange();
-    state.saveStatus = "正在处理图片...";
+    state.mediaPending += 1;
+    state.saveStatus = "正在处理图片…";
     setSaveBarStatus(state.saveStatus, true);
     uploadButton.disabled = true;
 
@@ -6714,6 +6689,8 @@ function compactImageValueField(label, value, onChange, options = {}) {
     } finally {
       uploadButton.disabled = false;
       upload.value = "";
+      state.mediaPending -= 1;
+      setSaveBarStatus(state.saveStatus);
     }
   });
 
@@ -6738,49 +6715,7 @@ function updateCompactImagePreview(preview, status, value) {
 }
 
 function imageValueField(label, value, onChange) {
-  const wrapper = element("div", "field image-value-field");
-  wrapper.append(element("span", "", label));
-  const input = document.createElement("input");
-  input.className = "input";
-  input.value = value || "";
-  input.placeholder = "粘贴图片地址或上传图片";
-  trackUndoOnEdit(input);
-  input.addEventListener("input", () => {
-    onChange(input.value);
-  });
-
-  const upload = document.createElement("input");
-  upload.type = "file";
-  upload.accept = "image/*";
-  upload.addEventListener("change", async () => {
-    const file = upload.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    state.saveStatus = "正在处理图片...";
-    rememberConfigChange();
-    setSaveBarStatus(state.saveStatus, true);
-    upload.disabled = true;
-
-    try {
-      const dataUrl = await imageFileToDataUrl(file, imageProfileForLabel(label));
-      input.value = dataUrl;
-      onChange(dataUrl);
-      state.saveStatus = "图片已加入预览，记得保存配置。";
-    } catch (error) {
-      state.saveStatus = error.message;
-    } finally {
-      upload.disabled = false;
-      upload.value = "";
-    }
-
-    renderAdminEditor();
-  });
-
-  wrapper.append(input, upload, element("small", "", "留空则不使用这张图片。"));
-  return wrapper;
+  return compactImageValueField(label, value, onChange);
 }
 
 function imageProfileForLabel(label) {
@@ -6920,6 +6855,7 @@ function navLink(href, icon, title, description, active, options = {}) {
     link.rel = "noreferrer";
   }
 
+  if (active) link.setAttribute("aria-current", "page");
   link.append(iconMark(icon, options.iconImage || "", options.fallbackIcon || ""), textBlock(title, description));
   return link;
 }
@@ -7036,6 +6972,9 @@ function element(tag, className = "", text = "") {
 }
 
 function setAppClass(className) {
+  for (const cleanup of state.renderCleanups.splice(0)) cleanup();
+  state.navigationCleanup?.();
+  state.navigationCleanup = null;
   app.className = className;
   app.replaceChildren();
 }
@@ -7288,4 +7227,182 @@ function drawFeatureMap(canvas, pages) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("HOME", center.x, center.y);
+}
+
+function selectAdminItem(type, id = "") {
+  clearAdminGameEditorMode();
+  state.selectedItemType = type;
+  if (type === "page") state.selectedPageId = id;
+  if (type === "link") state.selectedLinkId = id;
+  state.adminTab = "content";
+  state.expandedSettings = "";
+  renderAdminEditor();
+}
+
+function renderMobileTopbar(label) {
+  const bar = element("header", "mobile-topbar");
+  const trigger = withIcon(button("", "icon-button mobile-menu-button", "button"), "menu");
+  trigger.setAttribute("aria-label", "打开导航菜单");
+  trigger.setAttribute("aria-controls", "site-navigation");
+  trigger.setAttribute("aria-expanded", "false");
+  const brand = element("a", "mobile-brand", "宽");
+  brand.href = "/";
+  bar.append(trigger, brand, element("strong", "", label));
+  return { bar, trigger };
+}
+
+function renderAdminTabs(item) {
+  const tabs = element("nav", "admin-editor-tabs");
+  tabs.setAttribute("aria-label", "编辑区域");
+  const entries = item?.type === "home" ? [["content", "首页内容", "home"], ["security", "安全与权限", "shield"]] : item?.type === "page" ? [["content", item.page.kind === "blog" ? "文章内容" : "内容模块", "file"], ["appearance", "入口与外观", "palette"], ["settings", "页面设置", "settings"]] : [["content", "入口信息", "link"]];
+  for (const [value, label, symbol] of entries) {
+    const tab = withIcon(button(label, "editor-tab", "button"), symbol);
+    tab.classList.toggle("is-active", state.adminTab === value);
+    tab.setAttribute("aria-current", state.adminTab === value ? "page" : "false");
+    tab.addEventListener("click", () => { state.adminTab = value; renderAdminEditor(); });
+    tabs.append(tab);
+  }
+  return tabs;
+}
+
+function openCreateContentDialog() {
+  const grid = element("div", "choice-grid");
+  const choices = [["page", "file", "普通页面", "用文本、图片和工具模块，搭建自己的页面。"], ["blog", "blog", "博客", "发布文章，整理分类，记录值得分享的事。"], ["link", "link", "网站入口", "把常用网站、服务或游戏，放在首页和导航里。"]];
+  const modal = openDialog({ title: "新增内容", description: "选择一个起点，之后可以随时调整。", content: grid });
+  for (const [kind, symbol, title, description] of choices) {
+    const choice = button("", "choice-card", "button");
+    choice.append(icon(symbol), element("strong", "", title), element("span", "", description), icon("arrow", "choice-arrow"));
+    choice.addEventListener("click", () => {
+      modal.close();
+      rememberConfigChange();
+      const value = kind === "link" ? createExternalLink() : kind === "blog" ? createBlogPage() : createPage();
+      (kind === "link" ? state.config.links : state.config.pages).push(value);
+      appendNavOrder(`${kind === "link" ? "link" : "page"}:${value.id}`);
+      selectAdminItem(kind === "link" ? "link" : "page", value.id);
+      notify(`已创建${title}，编辑完成后记得保存。`);
+    });
+    grid.append(choice);
+  }
+}
+
+function sectionHeading(title, description = "") {
+  const heading = element("div", "section-head");
+  heading.append(element("h2", "", title));
+  if (description) heading.append(element("p", "", description));
+  return heading;
+}
+
+function renderSiteSecurity() {
+  const panel = element("section", "admin-panel security-panel");
+  panel.append(sectionHeading("管理权限", "管理登录密码与协作权限。"), renderAdminPasswordSettings(), renderCommentBlockWordsSettings());
+  return panel;
+}
+
+function renderPageSettings(page) {
+  const region = element("div", "page-settings-layout");
+  const basic = element("section", "admin-panel");
+  basic.append(sectionHeading("页面信息", "设置页面标题、网址以及是否公开展示。"), field("页面标题", page.title, value => { page.title = value; }), areaField("页面说明", page.description, value => { page.description = value; }));
+  const slug = field("网址后缀", page.slug, value => { page.slug = uniquePageSlug(page, value); }, "网址后缀改变后，原来的地址将无法访问。");
+  basic.append(slug, checkbox("在首页和导航中展示", page.visible, checked => { page.visible = checked; renderAdminEditor(); }));
+  const permissions = element("section", "admin-panel");
+  permissions.append(sectionHeading("访问与编辑权限", "需要私密分享时，可以为这个页面单独设置密码。"));
+  if (!isLimitedAdmin()) {
+    permissions.append(checkbox("访客进入页面需要密码", page.passwordEnabled, checked => { page.passwordEnabled = checked; renderAdminEditor(); }));
+    if (page.passwordEnabled) permissions.append(field("页面访问密码", page.pagePassword, value => { page.pagePassword = value; }, "请使用与管理员不同的密码。", { type: "password", autocomplete: "new-password" }));
+    permissions.append(checkbox("限制协作管理员编辑此页面", page.locked, checked => { page.locked = checked; renderAdminEditor(); }));
+  }
+  const danger = element("section", "admin-panel danger-zone");
+  danger.append(sectionHeading("删除页面", "删除后，页面及其模块将从站点移除。"));
+  const remove = withIcon(button("删除这个页面", "button danger", "button"), "trash");
+  remove.disabled = isLimitedAdmin();
+  remove.addEventListener("click", () => deletePage(page));
+  danger.append(remove);
+  region.append(basic, permissions, renderBottomCommentsSettings(page), danger);
+  return region;
+}
+
+function openInsertDialog(page, index) {
+  const grid = element("div", "choice-grid module-choice-grid");
+  const choices = [["text", "text", "文本", "文字、说明和日常记录", createTextSection], ["image", "image", "图片", "照片、插图与视觉内容", createImageSection], ["video", "video", "视频", "上传视频，配上简短介绍", createVideoSection], ["system", "grid", "实用工具", "便签、计算器、计时器等", createSystemSection], ["link", "link", "网站卡片", "分享一个值得收藏的网站", createLinkSection], ["navigation", "list", "导航列表", "把一组常用网址放在一起", createNavigationSection], ["article", "file", "文章入口", "展示站内的一篇文章", createArticleSection], ["blog", "blog", "博客列表", "在页面里展示一组文章", createBlogSection], ["comments", "message", "留言区", "给访客一个交流的地方", createCommentsSection]];
+  const modal = openDialog({ title: "添加内容模块", description: "选择内容类型，在页面里自由组合。", content: grid, className: "module-picker-dialog" });
+  for (const [, symbol, title, description, create] of choices) {
+    const choice = button("", "choice-card", "button");
+    choice.append(icon(symbol), element("strong", "", title), element("span", "", description));
+    choice.addEventListener("click", () => { modal.close(); insertSection(page, index, create()); });
+    grid.append(choice);
+  }
+}
+
+function renderDestinationCard({ title, description, href, image, marker, kind, meta, locked = false }) {
+  const card = element("article", "module-card entry-card destination-card");
+  const cover = element("div", "destination-cover");
+  if (image) applyEntryCardStyle(cover, image);
+  cover.append(element("span", "destination-category", kind));
+  const artwork = element("span", "destination-artwork");
+  artwork.append(icon(kind === "小游戏" ? "game" : kind === "博客" ? "blog" : kind === "网站" ? "external" : "file"));
+  cover.append(artwork);
+  if (locked) cover.append(icon("lock", "destination-lock"));
+  const body = element("div", "destination-body");
+  const header = element("header", "module-card-header no-toggle");
+  header.append(marker, textBlock(title, description || ""));
+  const footer = element("div", "destination-footer");
+  footer.append(element("span", "destination-meta", meta));
+  const link = element("a", "button destination-link");
+  link.href = href || "#";
+  link.setAttribute("aria-label", `打开${title}`);
+  link.append(icon(kind === "网站" ? "external" : "arrow"));
+  if (!href) {
+    link.setAttribute("aria-disabled", "true");
+    link.addEventListener("click", event => event.preventDefault());
+  }
+  footer.append(link);
+  body.append(header, footer);
+  card.append(cover, body);
+  return card;
+}
+
+function installAdminShortcuts() {
+  if (state.adminShortcutsInstalled) return;
+  state.adminShortcutsInstalled = true;
+  window.addEventListener("beforeunload", event => {
+    if (getRouteSlug() === "admin" && state.dirty) { event.preventDefault(); event.returnValue = ""; }
+  });
+  document.addEventListener("keydown", event => {
+    if (getRouteSlug() !== "admin" || !state.token || !(event.ctrlKey || event.metaKey)) return;
+    if (event.key.toLowerCase() === "s") { event.preventDefault(); if (state.dirty) saveAdminConfig(); }
+    if (event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      if (window.matchMedia("(max-width: 860px)").matches && !app.classList.contains("mobile-nav-open")) app.querySelector(".mobile-menu-button")?.click();
+      app.querySelector("[data-admin-search]")?.focus();
+    }
+    const editing = event.target.closest?.("input, textarea, [contenteditable]");
+    if (event.key.toLowerCase() === "z" && !editing && !event.shiftKey) { event.preventDefault(); if (!state.savePending) undoAdminChange(); }
+  });
+  document.addEventListener("click", async event => {
+    const link = event.target.closest?.("a[href]");
+    if (getRouteSlug() !== "admin" || !state.dirty || !link || link.target === "_blank" || event.ctrlKey || event.metaKey || event.button !== 0) return;
+    const destination = new URL(link.href, location.href);
+    if (destination.href === location.href) { event.preventDefault(); return; }
+    event.preventDefault();
+    const leave = await confirmAction({ title: "离开前还有未保存的修改", description: "先保存再离开，可以保留刚才的编辑内容。", confirmLabel: "放弃修改并离开", destructive: true });
+    if (leave) { state.dirty = false; location.href = destination.href; }
+  });
+}
+
+function mountPublicNavigation() {
+  if (app.classList.contains("single-module-page")) {
+    const back = element("a", "immersive-home-link", "返回首页");
+    back.href = "/";
+    back.prepend(icon("home"));
+    app.append(back);
+    return;
+  }
+  const sidebar = app.querySelector(":scope > .public-sidebar");
+  if (!sidebar) return;
+  const { bar, trigger } = renderMobileTopbar("宽宽的网站");
+  const scrim = button("", "navigation-scrim", "button");
+  scrim.setAttribute("aria-label", "关闭导航菜单");
+  app.prepend(bar);
+  app.append(scrim);
+  state.navigationCleanup = bindNavigation(app, sidebar, trigger, scrim);
 }

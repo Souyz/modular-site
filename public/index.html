@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f1f5f3" />
+    <meta name="theme-color" content="#ffffff" />
     <title>宽宽的模块化网站</title>
-    <link rel="stylesheet" href="/site-assets/styles-a8f3fa22e494.css" data-site-styles />
+    <link rel="stylesheet" href="/site-assets/styles-efae783db409.css" data-site-styles />
     <script type="module" data-site-bootstrap>
   const route = location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
   if (route !== "admin") {
@@ -17,91 +17,24 @@
     configPreload.href = `/api/site-config${publicRoute ? `?route=${encodeURIComponent(publicRoute)}` : ""}`;
     document.head.append(configPreload);
   }
-  void import(route === "admin" ? "/site-assets/admin/app-NU5IKGOT.js" : "/site-assets/public/app-7BKLKR3I.js");
+  void import(route === "admin" ? "/site-assets/admin/app-VFXTZVGX.js" : "/site-assets/public/app-KYIJUDOY.js");
 </script>
     <style>
-      html.app-booting,
-      html.app-booting body {
-        margin: 0;
-        background:
-          radial-gradient(circle at 78% -12%, rgba(19, 161, 143, 0.12), transparent 34rem),
-          linear-gradient(180deg, #f9fbfa 0%, #f1f5f3 100%);
-      }
-      .boot-shell {
-        display: grid;
-        grid-template-columns: 264px minmax(0, 1fr);
-        min-height: 100vh;
-        color: #10231d;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      .boot-sidebar {
-        border-right: 1px solid #d9e4df;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 250, 0.98));
-        padding: 24px;
-        box-shadow: 10px 0 42px rgba(16, 35, 29, 0.045);
-      }
-      .boot-brand {
-        width: 146px;
-        height: 44px;
-        border-radius: 14px;
-        background: linear-gradient(145deg, #e5f7f2, #d8eee8);
-      }
-      .boot-main {
-        padding: clamp(28px, 4vw, 64px);
-      }
-      .boot-title,
-      .boot-line,
-      .boot-card {
-        overflow: hidden;
-        border-radius: 18px;
-        background: linear-gradient(110deg, #e7eeeb 22%, #f3f7f5 42%, #e7eeeb 62%);
-        animation: boot-pulse 1.5s ease-in-out infinite;
-      }
-      .boot-title {
-        width: min(430px, 72vw);
-        height: 72px;
-        border-radius: 18px;
-      }
-      .boot-line {
-        width: min(620px, 78vw);
-        height: 18px;
-        margin-top: 18px;
-        border-radius: 9px;
-      }
-      .boot-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-top: 40px;
-      }
-      .boot-card {
-        min-height: 210px;
-      }
-      @keyframes boot-pulse {
-        0%, 100% { opacity: 0.72; }
-        50% { opacity: 1; }
-      }
-      @media (max-width: 860px) {
-        .boot-shell {
-          grid-template-columns: 1fr;
-        }
-        .boot-sidebar {
-          min-height: 76px;
-          border-right: 0;
-          border-bottom: 1px solid #d9e4df;
-          padding: 16px;
-        }
-        .boot-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .boot-title,
-        .boot-line,
-        .boot-card {
-          animation: none;
-        }
-      }
+      html.app-booting, html.app-booting body { margin: 0; background: #fff; }
+      .boot-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+      .boot-sidebar { border-right: 1px solid #e6e9ee; padding: 28px 24px; }
+      .boot-brand { width: 140px; height: 38px; border-radius: 8px; background: #edf1f4; }
+      .boot-main { padding: 75px clamp(25px, 4.3vw, 68px); }
+      .boot-title, .boot-line, .boot-card { border-radius: 10px; background: #f3f5f7; animation: boot-pulse 1.5s ease-in-out infinite; }
+      .boot-title { width: min(460px, 76vw); height: 62px; }
+      .boot-line { width: min(400px, 76vw); height: 14px; margin-top: 21px; }
+      .boot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; margin-top: 80px; }
+      .boot-card { min-height: 220px; }
+      @keyframes boot-pulse { 50% { opacity: .5; } }
+      @media (max-width: 1180px) { .boot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 860px) { .boot-shell { display: block; } .boot-sidebar { height: 62px; padding: 13px 20px; border-bottom: 1px solid #e6e9ee; border-right: 0; } .boot-brand { width: 130px; height: 32px; } .boot-main { padding-top: 55px; } }
+      @media (max-width: 620px) { .boot-grid { grid-template-columns: 1fr; margin-top: 50px; } .boot-title { height: 45px; } }
+      @media (prefers-reduced-motion: reduce) { .boot-title, .boot-line, .boot-card { animation: none; } }
     </style>
   </head>
   <body>

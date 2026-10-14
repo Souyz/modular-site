@@ -49,7 +49,7 @@ async function buildEntry(name, entryPoint) {
 
 async function writeHashedStyles() {
   const source = Buffer.from(
-    (await readFile(resolve(publicDir, "styles.css"), "utf8")).replace(/\r\n?/g, "\n"),
+    (await Promise.all(["styles.css", "interface.css"].map(name => readFile(resolve(publicDir, name), "utf8")))).join("\n").replace(/\r\n?/g, "\n"),
     "utf8"
   );
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 12);

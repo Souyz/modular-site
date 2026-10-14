@@ -1,13 +1,13 @@
 # 项目交接说明
 
-更新时间：2026-10-14
+更新时间：2026-10-15
 
-## 当前维护基线（2026-10-14）
+## 当前维护基线（2026-10-15）
 
 - 本轮以 Cloudflare 正式域名 `neyc.de5.net` 当前部署为准，恢复此前已发布但未提交 GitHub 的改动。同步前 GitHub `main` 为 `e22a004aa63001ca7104d21c083387b34fc00171`，提交时间为 2026-07-22。
 - 本地 TypeScript 经 Wrangler 构建后的 Worker 与下载的线上 `index.js` 完全一致；SHA-256 为 `8c56ff88384b580b14c49d54091719b3f9f51c30785333660de79848f0f160e9`。
 - 123 个可访问静态文件已全部核验一致：115 个直接比较完整字节，8 个大文件按 Wrangler 的 BLAKE3 资源算法核对线上 ETag。首页、后台入口、全部站点 bundle、CubeCity 和 Godot PCK/WASM 均在核验范围内。
-- 当前前端入口：`/site-assets/public/app-7BKLKR3I.js`；后台入口：`/site-assets/admin/app-NU5IKGOT.js`；样式：`/site-assets/styles-a8f3fa22e494.css`。`npm test` 重新构建后仍生成这三个相同文件。
+- 当前前端入口：`/site-assets/public/app-KYIJUDOY.js`；后台入口：`/site-assets/admin/app-VFXTZVGX.js`；样式：`/site-assets/styles-efae783db409.css`。`npm test` 重新构建后仍生成这三个相同文件。
 - 代码部署时间与网站内容更新时间不同。远端 KV 的 `site-config.updatedAt` 为 `2026-10-04T13:52:34.142Z`（北京时间 2026-10-04 21:52:34），包含目前的宽 API、宽 TV、邮箱及 SSH 等入口；内容以远端 KV/D1 为准。
 - 默认 Godot PCK 为 9,854,976 bytes，版本前缀 `1496118adb893fd0`。默认素材包仍为 `original`，另外保留 `liushuo` 和 `guoliang`；D1 关卡元数据共 10 项。
 - 检查结果：55/55 Node 测试、TypeScript 检查、十关 Godot 运行探针均通过。线上桌面首页、博客列表、管理员登录入口和 Godot 游戏启动已用真实浏览器检查。
@@ -16,6 +16,16 @@
 - 已完整备份并同步 77 项 KV 配置/素材（39,305,016 bytes）以及 D1 元数据到本地开发状态。当前网站配置和游戏清单与线上相同；图片/PCK 按原始字节保存并逐项读回验证。`tools/import-local-kv.mjs` 通过 Wrangler 本地 bindings 导入，`remoteBindings: false`，不会连接远端。当前 Wrangler 的 `kv bulk put --local` 会把 Base64 二进制转成 UTF-8 文本，因此不要用它恢复图片或游戏包。
 - `.codex-cache/`、`.playwright-cli/`、`output/`、`.wrangler/` 及开发变量均应保持 Git 忽略。
 - 已证实代码和静态资源一致的版本同步不需要再次部署 Cloudflare；功能或静态资源修改才执行下述完整发布流程。每次发布后将 Version ID 与 Git 提交一起记录，避免再次出现只有线上更新、GitHub 未同步。
+
+## 本轮网站重设计与博客公开投稿（2026-10-15）
+
+- 普通用户界面和管理员界面已整体重做：统一白色/中性灰界面、博客列表和文章详情、后台内容工作区、页面搜索、折叠编辑、移动端抽屉导航、底部保存栏、焦点管理、Escape 操作、响应式断点和 reduced-motion。
+- 博客开放游客投稿。`POST /api/blog/articles` 只允许对公开可见的博客页面写入文章，正文按纯文本保存并转换为安全 HTML；标题和正文必填，正文最多 16,000 字符，封面只接受相对路径或 `http/https` 地址。游客文章保存为 `authorRole: "public"`，不能提交整站配置、管理员字段或 featured 状态。
+- 管理员文章删除走独立的 `DELETE /api/admin/blog/articles`。完整管理员可以删除任何文章；limited 管理员保留原权限边界，不能删除 `admin` 文章，但可以处理 public/limited 文章。删除和配置保存都检查 `updatedAt`，避免覆盖并发修改。
+- 本地通过真实 Worker API 和 Playwright 完成了游客投稿、危险 HTML 转义、危险封面过滤、未授权删除拒绝、管理员确认删除和删除后列表刷新验证。完整测试为 Node 55/55、TypeScript、前端语法和 `git diff --check` 全部通过。
+- 正式站回归确认 `/api/health` 为 200，`/blog` 显示公开投稿卡片，线上 KV 仍保留 4 篇原文章和分类 `["随笔", "推荐", "教程"]`；没有把本地验收文章写入生产。
+- 本轮 bundle：`/site-assets/public/app-KYIJUDOY.js`、`/site-assets/admin/app-VFXTZVGX.js`、`/site-assets/styles-efae783db409.css`。Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
+- 游戏资源未纳入本次改造；发布后已恢复并验证原始 Godot PCK 基线（9,854,976 bytes，SHA-256 `1496118adb893fd0840cd957de118607cad9d511a88b1974e76c71691e3c10ae`）。
 
 ## 新对话启动语
 
@@ -31,7 +41,7 @@
 - Worker 预览地址：`https://cloudflare-modular-site.2089151168.workers.dev`
 - 当前分支：`main`
 - 最新提交：以 `git log -1 --oneline` 为准
-- 当前正式 Cloudflare Version ID：`19cb5115-5ad9-41a6-990e-1ee96f3782dd`（2026-08-01 19:04:58 北京时间部署，100% 流量）
+- 当前正式 Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`（2026-10-15 部署，100% 流量）
 - 管理后台：`/admin`
 - 默认完整管理员密码：`admin`
 - 网站配置与内容主要保存在 Cloudflare KV `SITE_CONFIG`

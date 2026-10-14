@@ -616,7 +616,7 @@ test("admin app exposes llr-mariorun entry and online editors", () => {
   assert.match(app, /function shouldRenderAdminGameEditor\(\)/);
   assert.match(app, /get\("game"\) === "llr-mariorun"/);
   assert.match(app, /function clearAdminGameEditorMode\(\)/);
-  assert.match(app, /if \(gameEditorMode\) \{[\s\S]*?main\.append\(renderAdminGameEditor\(\)\)/);
+  assert.match(app, /if \(gameEditorMode\) \{[\s\S]*?content\.append\(renderAdminGameEditor\(\)\)/);
   assert.doesNotMatch(app, /panel\.append\(renderAdminGameEditor\(\)\)/);
   assert.match(app, /async function loadAdminGameConfig\(\)/);
   assert.match(app, /function renderGameAssetPackEditor/);
