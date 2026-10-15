@@ -7,7 +7,7 @@
 - 本轮以 Cloudflare 正式域名 `neyc.de5.net` 当前部署为准，恢复此前已发布但未提交 GitHub 的改动。同步前 GitHub `main` 为 `e22a004aa63001ca7104d21c083387b34fc00171`，提交时间为 2026-07-22。
 - 本地 TypeScript 经 Wrangler 构建后的 Worker 与下载的线上 `index.js` 完全一致；SHA-256 为 `8c56ff88384b580b14c49d54091719b3f9f51c30785333660de79848f0f160e9`。
 - 123 个可访问静态文件已全部核验一致：115 个直接比较完整字节，8 个大文件按 Wrangler 的 BLAKE3 资源算法核对线上 ETag。首页、后台入口、全部站点 bundle、CubeCity 和 Godot PCK/WASM 均在核验范围内。
-- 当前前端入口：`/site-assets/public/app-KYIJUDOY.js`；后台入口：`/site-assets/admin/app-VFXTZVGX.js`；样式：`/site-assets/styles-efae783db409.css`。`npm test` 重新构建后仍生成这三个相同文件。
+- 当前前端入口：`/site-assets/public/app-QNY4GG3M.js`；后台入口：`/site-assets/admin/app-A22SJKVK.js`；样式：`/site-assets/styles-81e871a51f51.css`。`npm test` 重新构建后仍生成这三个相同文件。
 - 代码部署时间与网站内容更新时间不同。远端 KV 的 `site-config.updatedAt` 为 `2026-10-04T13:52:34.142Z`（北京时间 2026-10-04 21:52:34），包含目前的宽 API、宽 TV、邮箱及 SSH 等入口；内容以远端 KV/D1 为准。
 - 默认 Godot PCK 为 9,854,976 bytes，版本前缀 `1496118adb893fd0`。默认素材包仍为 `original`，另外保留 `liushuo` 和 `guoliang`；D1 关卡元数据共 10 项。
 - 检查结果：55/55 Node 测试、TypeScript 检查、十关 Godot 运行探针均通过。线上桌面首页、博客列表、管理员登录入口和 Godot 游戏启动已用真实浏览器检查。
@@ -24,8 +24,17 @@
 - 管理员文章删除走独立的 `DELETE /api/admin/blog/articles`。完整管理员可以删除任何文章；limited 管理员保留原权限边界，不能删除 `admin` 文章，但可以处理 public/limited 文章。删除和配置保存都检查 `updatedAt`，避免覆盖并发修改。
 - 本地通过真实 Worker API 和 Playwright 完成了游客投稿、危险 HTML 转义、危险封面过滤、未授权删除拒绝、管理员确认删除和删除后列表刷新验证。完整测试为 Node 55/55、TypeScript、前端语法和 `git diff --check` 全部通过。
 - 正式站回归确认 `/api/health` 为 200，`/blog` 显示公开投稿卡片，线上 KV 仍保留 4 篇原文章和分类 `["随笔", "推荐", "教程"]`；没有把本地验收文章写入生产。
-- 本轮 bundle：`/site-assets/public/app-KYIJUDOY.js`、`/site-assets/admin/app-VFXTZVGX.js`、`/site-assets/styles-efae783db409.css`。Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
+- 本轮 bundle：`/site-assets/public/app-QNY4GG3M.js`、`/site-assets/admin/app-A22SJKVK.js`、`/site-assets/styles-81e871a51f51.css`。Cloudflare Version ID：`3eadcfb6-d652-4e4b-9414-ca409371df0e`。
 - 游戏资源未纳入本次改造；发布后已恢复并验证原始 Godot PCK 基线（9,854,976 bytes，SHA-256 `1496118adb893fd0840cd957de118607cad9d511a88b1974e76c71691e3c10ae`）。
+
+## 2026-10-15 分页面模块编辑器重设计
+
+- 普通分页面的内容编辑已改成单一的页面搭建流程：页面标题下面固定显示“添加内容”工具栏，文字、图片、视频、实用工具、网站卡片、导航列表、文章入口、博客和留言区都可以直接点击添加。
+- 新模块默认追加到页面底部、自动展开并滚动到编辑位置；模块之间不再显示重复的“在这里添加”插入条，也不再要求先打开选择弹窗。
+- 每个模块保留上移、下移和删除，并新增复制模块操作。复制使用深拷贝并重新生成模块及内部条目的 ID，复制后的内容可以独立修改。
+- 移动端工具栏自动使用两列卡片；保留页面锁定、低权限管理员边界、撤销、保存、布局设置和 reduced-motion 行为。
+- 本轮代码入口是 public/app.js、public/ui.js 和 public/interface.css；本地通过真实 Worker 与 Playwright 验证了文字、图片、实用工具添加、自动展开、复制独立编辑、桌面 3×3 和移动端两列布局，控制台无运行时错误。
+- 本轮浏览器验收的新增模块没有保存到 KV/D1，正式内容未被测试数据污染。正式部署使用 bundle：/site-assets/public/app-QNY4GG3M.js、/site-assets/admin/app-A22SJKVK.js、/site-assets/styles-81e871a51f51.css；Cloudflare Version ID：3eadcfb6-d652-4e4b-9414-ca409371df0e。
 
 ## 新对话启动语
 
@@ -41,7 +50,7 @@
 - Worker 预览地址：`https://cloudflare-modular-site.2089151168.workers.dev`
 - 当前分支：`main`
 - 最新提交：以 `git log -1 --oneline` 为准
-- 当前正式 Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`（2026-10-15 部署，100% 流量）
+- 当前正式 Cloudflare Version ID：`3eadcfb6-d652-4e4b-9414-ca409371df0e`（2026-10-15 部署，100% 流量）
 - 管理后台：`/admin`
 - 默认完整管理员密码：`admin`
 - 网站配置与内容主要保存在 Cloudflare KV `SITE_CONFIG`

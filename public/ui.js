@@ -32,7 +32,8 @@ const iconPaths = {
   game: '<path d="M7 7h10c3 0 5 10 3 12-2 1-5-4-5-4H9s-3 5-5 4C2 17 4 7 7 7Z"/><path d="M6 11h5M8.5 8.5v5M16 10h.01M18 12h.01"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
   up: '<path d="m6 14 6-6 6 6"/>',
-  down: '<path d="m6 10 6 6 6-6"/>'
+  down: '<path d="m6 10 6 6 6-6"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>'
 };
 
 export function icon(name, className = '') {

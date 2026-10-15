@@ -6,7 +6,7 @@
 
 - 正式网站：`https://neyc.de5.net`；管理后台：`/admin`。
 - GitHub 仓库：`larryllr/modular-site`，主分支 `main`。
-- Worker：`cloudflare-modular-site`；当前线上代码版本：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
+- Worker：`cloudflare-modular-site`；当前线上代码版本：`3eadcfb6-d652-4e4b-9414-ca409371df0e`。
 - 2026-10-14 已按 Cloudflare 当前部署同步本地代码与 GitHub；网站内容独立保存在 KV `SITE_CONFIG` 和 D1 `GAME_DB`，不能用旧配置覆盖远端内容。
 - 新维护对话先读 [HANDOFF.md](HANDOFF.md)，再查看 `git status`、最近提交和 Cloudflare 当前部署。
 - 本机内容快照及备份位于 `Documents/Codex Website Backups/sync-20261014-website/`，受保护数据不进入公开仓库。
@@ -16,7 +16,8 @@
 - 管理后台和普通用户界面已完成整体重设计，采用新的白色/中性灰视觉系统、响应式布局、移动端导航抽屉、键盘焦点和 reduced-motion 支持。
 - 博客现在允许游客免登录投稿：前台通过 `POST /api/blog/articles` 接收署名、标题、分类、标签、封面地址、简介和纯文本正文；服务端会限制长度、转义 HTML、过滤危险封面协议，并把文章标记为 `authorRole: "public"`。
 - 管理员可通过博客列表删除文章，接口为 `DELETE /api/admin/blog/articles`；完整管理员可以删除所有文章，limited 管理员不能删除 `admin` 发布的文章。删除使用 `updatedAt` 冲突校验，不通过公开配置写入接口绕过权限。
-- 本轮发布使用的前端 bundle 为 `/site-assets/public/app-KYIJUDOY.js`、`/site-assets/admin/app-VFXTZVGX.js` 和 `/site-assets/styles-efae783db409.css`。Cloudflare Version ID：`5edf9e22-a62c-4c67-a3b2-dff15c3f7371`。
+- 分页面模块编辑器已改为集中式添加：去掉模块之间重复的添加条和新增弹窗，用户只需在页面顶部选择类型；新增模块自动打开编辑，适合连续往分页面里放内容。
+- 本轮发布使用的前端 bundle 为 `/site-assets/public/app-QNY4GG3M.js`、`/site-assets/admin/app-A22SJKVK.js` 和 `/site-assets/styles-81e871a51f51.css`。Cloudflare Version ID：`3eadcfb6-d652-4e4b-9414-ca409371df0e`。
 
 ## 目录
 
@@ -84,7 +85,7 @@ npm run wrangler -- kv namespace create SITE_CONFIG
 - 登录页不会显示默认密码，避免把密码直接暴露在界面上。
 - 管理员界面可以直接修改管理员密码，修改后会保存在 Cloudflare KV 中。
 - 管理员界面可以新增分页面、修改页面标题和说明、设置网址后缀、控制是否在主页显示入口、为页面勾选系统模块、添加自定义文本模块。
-- 管理员界面现在是预览式编辑：在页面预览中插入系统模块、文本模块和图片模块，并用上移/下移控制它们在分页面里的位置。
+- 管理员界面现在是页面搭建器：内容区顶部直接提供文字、图片、视频、实用工具、网站卡片、导航列表、文章入口、博客和留言区快捷卡片；点击后自动追加到页面底部并展开编辑。模块可复制、上移、下移、删除，复制会生成独立 ID。
 - 图片模块支持粘贴图片地址或上传本地图片；可以选择正常图片显示，也可以作为背景图片显示。
 - 每个分页面的主页入口卡片可以自定义入口标题、说明、卡片背景、小方块文字和小方块背景。
 - 评论模块支持免登录发言，访客可自定义名字；前台会显示评论 IP 和发布时间。管理员可以删除单条评论或清空当前分页面全部评论。

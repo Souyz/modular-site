@@ -741,3 +741,192 @@ h2, h3 { letter-spacing: -.025em; }
     grid-column: auto;
   }
 }
+
+
+/* The page builder keeps adding content in one predictable place. */
+.module-add-toolbar {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e4e9ef;
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+.module-add-toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.module-add-toolbar-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.module-add-toolbar-copy h3 {
+  margin: 0;
+  color: #344557;
+  font-size: 13px;
+  font-weight: 600;
+}
+.module-add-toolbar-copy p {
+  margin: 0;
+  color: #697789;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.module-add-toolbar-hint {
+  flex: 0 0 auto;
+  color: #8a96a3;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.module-add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.module-add-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 10px 11px;
+  border: 1px solid #e1e7ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #536477;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms, transform 150ms, box-shadow 150ms;
+}
+.module-add-card:hover {
+  border-color: #aebdca;
+  background: #f7fafc;
+  box-shadow: 0 5px 16px rgb(55 73 92 / 7%);
+  transform: translateY(-1px);
+}
+.module-add-card:focus-visible {
+  outline: 2px solid #7890a3;
+  outline-offset: 2px;
+}
+.module-add-card:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.module-add-card-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #f0f3f6;
+  color: #64788b;
+}
+.module-add-card-icon .ui-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.55;
+}
+.module-add-card-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.module-add-card-copy strong {
+  overflow: hidden;
+  color: #4d6073;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.module-add-card-copy small {
+  overflow: hidden;
+  color: #8a96a3;
+  font-size: 10px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.module-add-card-plus {
+  width: 14px;
+  height: 14px;
+  color: #9aa7b4;
+}
+.page-section-list {
+  display: grid;
+  gap: 12px;
+  padding-top: 2px;
+}
+.section-control-copy {
+  min-width: 0;
+}
+.section-control-copy strong {
+  max-width: min(42vw, 360px);
+}
+.section-tools .icon-button {
+  flex: 0 0 auto;
+}
+@media (max-width: 720px) {
+  .module-add-toolbar {
+    padding: 13px;
+  }
+  .module-add-toolbar-head {
+    align-items: flex-start;
+  }
+  .module-add-toolbar-hint {
+    display: none;
+  }
+  .module-add-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .module-add-card {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+    min-height: 57px;
+    padding: 9px;
+  }
+  .module-add-card-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+  }
+  .module-add-card-icon .ui-icon {
+    width: 14px;
+    height: 14px;
+  }
+  .module-add-card-plus {
+    display: none;
+  }
+  .module-add-card-copy small {
+    font-size: 9px;
+  }
+  .section-control-copy strong {
+    max-width: 30vw;
+  }
+}
+@media (max-width: 430px) {
+  .module-add-card {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 7px;
+    padding: 8px;
+  }
+  .module-add-card-icon {
+    width: 24px;
+    height: 24px;
+  }
+  .module-add-card-copy strong {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .module-add-card {
+    transition: none;
+  }
+}

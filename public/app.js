@@ -1541,20 +1541,21 @@ function renderPreviewEditor(page) {
     panel.append(renderEditableBlogSection(blog));
     return panel;
   }
-  const head = sectionHeading("内容模块", "点击模块展开编辑，使用上下箭头调整展示顺序。");
+  const head = sectionHeading("内容模块", "选一种内容，直接添加到页面底部；模块会自动展开，编辑完成后再调整顺序。");
   head.classList.add("content-module-heading");
   head.append(element("span", "count-badge", `${page.sections.length} 个模块`));
   const canvas = element("div", "page-preview");
-  canvas.append(renderEditablePageHeader(page), renderInsertBar(page, 0));
-  page.sections.forEach((section, index) => {
-    canvas.append(renderEditableSection(page, section, index), renderInsertBar(page, index + 1));
-  });
+  canvas.append(renderEditablePageHeader(page), renderModuleAddToolbar(page));
+  if (page.sections.length) {
+    const sectionList = element("div", "page-section-list");
+    page.sections.forEach((section, index) => {
+      sectionList.append(renderEditableSection(page, section, index));
+    });
+    canvas.append(sectionList);
+  }
   if (!page.sections.length) {
     const empty = element("div", "editor-empty-state");
-    empty.append(icon("grid"), element("h3", "", "从第一个模块开始"), element("p", "", "写一段文字、放一张图片，或添加一个实用工具。"));
-    const add = withIcon(button("添加模块", "button primary", "button"), "plus");
-    add.addEventListener("click", () => openInsertDialog(page, 0));
-    empty.append(add);
+    empty.append(icon("grid"), element("h3", "", "这页还没有内容"), element("p", "", "从上面的内容类型开始，模块会自动放到页面底部。"));
     canvas.append(empty);
   }
   panel.append(head, canvas);
@@ -1852,12 +1853,44 @@ function renderBottomCommentsSettings(page) {
   return panel;
 }
 
-function renderInsertBar(page, index) {
-  const bar = element("div", "insert-bar");
-  const add = withIcon(button(index === 0 ? "添加内容模块" : "在这里添加", "insert-module-button", "button"), "plus");
-  add.addEventListener("click", () => openInsertDialog(page, index));
-  bar.append(add);
-  return bar;
+function getSectionChoices() {
+  return [
+    { type: "text", symbol: "text", title: "文字", description: "正文、说明和日常记录", create: createTextSection },
+    { type: "image", symbol: "image", title: "图片", description: "照片、插图和视觉内容", create: createImageSection },
+    { type: "video", symbol: "video", title: "视频", description: "上传视频并添加介绍", create: createVideoSection },
+    { type: "system", symbol: "grid", title: "实用工具", description: "便签、计算器、计时器等", create: createSystemSection },
+    { type: "link", symbol: "link", title: "网站卡片", description: "分享一个值得收藏的网站", create: createLinkSection },
+    { type: "navigation", symbol: "list", title: "导航列表", description: "把常用网址整理在一起", create: createNavigationSection },
+    { type: "article", symbol: "file", title: "文章入口", description: "展示站内的一篇文章", create: createArticleSection },
+    { type: "blog", symbol: "blog", title: "博客", description: "在页面里展示一组文章", create: createBlogSection },
+    { type: "comments", symbol: "message", title: "留言区", description: "给访客一个交流的地方", create: createCommentsSection }
+  ];
+}
+
+function renderModuleAddToolbar(page) {
+  const toolbar = element("section", "module-add-toolbar");
+  const copy = element("div", "module-add-toolbar-copy");
+  copy.append(element("h3", "", "添加内容"), element("p", "", "点击一种类型，它会直接加入这页底部并打开编辑。"));
+  const hint = element("span", "module-add-toolbar-hint", "按添加顺序排列");
+  const head = element("div", "module-add-toolbar-head");
+  head.append(copy, hint);
+
+  const grid = element("div", "module-add-grid");
+  for (const choice of getSectionChoices()) {
+    const add = button("", "module-add-card", "button");
+    add.dataset.moduleType = choice.type;
+    add.setAttribute("aria-label", `添加${choice.title}模块`);
+    const mark = element("span", "module-add-card-icon");
+    mark.append(icon(choice.symbol));
+    const text = element("span", "module-add-card-copy");
+    text.append(element("strong", "", choice.title), element("small", "", choice.description));
+    add.append(mark, text, icon("plus", "module-add-card-plus"));
+    add.addEventListener("click", () => insertSection(page, page.sections.length, choice.create()));
+    grid.append(add);
+  }
+
+  toolbar.append(head, grid);
+  return toolbar;
 }
 
 function renderEditableSection(page, section, index) {
@@ -1922,6 +1955,11 @@ function renderSectionControls(page, section, index, expanded) {
   down.title = "下移模块";
   down.disabled = limitedLocked || index === page.sections.length - 1;
   down.addEventListener("click", () => moveSection(page, index, 1));
+  const duplicate = withIcon(button("", "icon-button", "button"), "copy");
+  duplicate.setAttribute("aria-label", "复制模块");
+  duplicate.title = "复制模块";
+  duplicate.disabled = limitedLocked;
+  duplicate.addEventListener("click", () => duplicateSection(page, index));
   const remove = withIcon(button("", "icon-button danger", "button"), "trash");
   remove.setAttribute("aria-label", "删除模块");
   remove.title = "删除模块";
@@ -1933,7 +1971,7 @@ function renderSectionControls(page, section, index, expanded) {
     state.expandedSections.delete(section.id);
     renderAdminEditor();
   });
-  tools.append(up, down, remove, toggle);
+  tools.append(duplicate, up, down, remove, toggle);
   controls.append(copy, tools);
   return controls;
 }
@@ -6101,8 +6139,46 @@ function insertSection(page, index, section) {
   page.sections.splice(index, 0, section);
   state.expandedSections.add(section.id);
   renderAdminEditor();
+  requestAnimationFrame(() => {
+    const added = [...document.querySelectorAll("[data-section-id]")].find((node) => node.dataset.sectionId === section.id);
+    if (!added) return;
+    added.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+    });
+    added.querySelector(".section-toggle")?.focus({ preventScroll: true });
+  });
 }
 
+function duplicateSection(page, index) {
+  const source = page.sections[index];
+  if (!source) return;
+
+  if (isLimitedAdmin() && (page.locked || source.layout?.locked)) {
+    state.saveStatus = "锁定的模块不能复制。";
+    renderAdminEditor();
+    return;
+  }
+
+  insertSection(page, index + 1, cloneSection(source));
+}
+
+function cloneSection(section) {
+  const copy = typeof structuredClone === "function"
+    ? structuredClone(section)
+    : JSON.parse(JSON.stringify(section));
+
+  const refreshIds = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (Object.prototype.hasOwnProperty.call(value, "id")) {
+      value.id = crypto.randomUUID();
+    }
+    for (const child of Object.values(value)) refreshIds(child);
+  };
+
+  refreshIds(copy);
+  return copy;
+}
 function moveSection(page, index, direction) {
   const nextIndex = index + direction;
 
@@ -7323,9 +7399,8 @@ function renderPageSettings(page) {
 
 function openInsertDialog(page, index) {
   const grid = element("div", "choice-grid module-choice-grid");
-  const choices = [["text", "text", "文本", "文字、说明和日常记录", createTextSection], ["image", "image", "图片", "照片、插图与视觉内容", createImageSection], ["video", "video", "视频", "上传视频，配上简短介绍", createVideoSection], ["system", "grid", "实用工具", "便签、计算器、计时器等", createSystemSection], ["link", "link", "网站卡片", "分享一个值得收藏的网站", createLinkSection], ["navigation", "list", "导航列表", "把一组常用网址放在一起", createNavigationSection], ["article", "file", "文章入口", "展示站内的一篇文章", createArticleSection], ["blog", "blog", "博客列表", "在页面里展示一组文章", createBlogSection], ["comments", "message", "留言区", "给访客一个交流的地方", createCommentsSection]];
   const modal = openDialog({ title: "添加内容模块", description: "选择内容类型，在页面里自由组合。", content: grid, className: "module-picker-dialog" });
-  for (const [, symbol, title, description, create] of choices) {
+  for (const { symbol, title, description, create } of getSectionChoices()) {
     const choice = button("", "choice-card", "button");
     choice.append(icon(symbol), element("strong", "", title), element("span", "", description));
     choice.addEventListener("click", () => { modal.close(); insertSection(page, index, create()); });
